@@ -186,6 +186,16 @@ class FreeTagsScoreTest(unittest.TestCase):
         self.assertEqual(former_topics["score"], arbitrary["score"])
         self.assertEqual(former_topics["max"], arbitrary["max"])
 
+    def test_tags_notes_follow_configured_bands(self) -> None:
+        zero = self.tags_dimension([])
+        middle = self.tags_dimension(["甲", "乙"])
+        many = self.tags_dimension(["甲", "乙", "丙", "丁", "戊"])
+
+        self.assertIn("未打标签", zero["notes"])
+        self.assertNotIn("未打标签", middle["notes"])
+        self.assertIn("标签偏多", many["notes"])
+        self.assertNotIn("标签偏多", middle["notes"])
+
 
 if __name__ == "__main__":
     unittest.main()

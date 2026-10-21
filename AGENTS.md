@@ -17,7 +17,7 @@
 
 GitHub Actions 每个自然日按 UTC+8 无头运行同一套流程，工作流见 `.github/workflows/daily-knowledge.yml`；触发、参数、幂等、失败与冒烟口径见 spec 的「自动运行」「CI 参数/凭证/幂等/失败/并发/冒烟」节。
 
-- 手动触发支持 `force` 覆盖；当日日报已存在时按 `force` 跳过或重新采集。
+- 手动触发支持 `force` 覆盖；当日日报已存在时的跳过与覆盖口径见 spec 的「CI 幂等」。
 - 成功后只提交 `daily-knowledge/` 与当日 `work/YYYY-MM-DD/collect.json`；其余中间产物不入库。
 - 失败不提交半成品、不自动重试，只上传 `work/<日期>/` artifact。
 
@@ -25,7 +25,7 @@ GitHub Actions 每个自然日按 UTC+8 无头运行同一套流程，工作流�
 
 - 默认只读：未经用户明确要求，不修改项目中的任何文件、不开始实施、不提交或推送。用户只要求改文档时，只改指定文档。
 - 采集由 Python 脚本（`scripts/collect.py`）完成；契约校验与质量评分为 Python（`scripts/validate.py`、`scripts/score.py`）；其余阶段零脚本。
-- 字段与形状以 `schemas/` 为唯一来源；评分词表在 `config/score-rules.json`；两者都不在技能里复述。
+- 字段与形状以 `schemas/` 为唯一来源；评分词表在 `config/score-rules.json`，校验语义阈值在 `config/validation-rules.json`；三者都不在技能里复述。
 - 子代理只有两个：`knowledge-analyze`（分析）与 `knowledge-organize`（整理）；采集不再是子代理。
 - 技能/agent/文档的写法规范（供 `/code-review` 标准轴）见 `docs/agents/CODING_STANDARDS.md`。
 - 产出用中文；项目名/标题保留原文。

@@ -183,21 +183,22 @@ def _score_format(item: dict, rules: dict) -> dict:
 
 
 def _score_tags(item: dict, rules: dict) -> dict:
+    """标签分档与提示全部来自配置，脚本不写阈值。"""
     weights = rules["dimensions"]["tags"]
     count = len(item.get("themes") or [])
 
     score = 0
+    band_note = None
     for band in weights["bands"]:
         upper = band.get("max")
         if count >= band["min"] and (upper is None or count <= upper):
             score = band["score"]
+            band_note = band.get("note")
             break
 
     notes = [f"标签 {count} 个"]
-    if count == 0:
-        notes.append("未打标签")
-    elif count >= 5:
-        notes.append("标签偏多")
+    if band_note:
+        notes.append(band_note)
     return {"score": score, "max": weights["max"], "notes": notes}
 
 
@@ -272,10 +273,18 @@ def render_card(result: dict) -> str:
                 f"{dimension['score']}/{dimension['max']}"
             )
         if item["grade"] == "C":
-            for dimension in item["dimensions"].values():
-                for note in dimension["notes"]:
-                    if note.startswith(("命中空洞词", "未见", "why", "未打标签", "标签偏多")):
-                        lines.append(f"   ⚠ {note}")
+            for key, dimension in item["dimensions"].items():
+                if key == "tags":
+                    # 标签维度的提示文案由配置分档提供，未满分时原样展示
+                    notes = dimension["notes"] if dimension["score"] < dimension["max"] else []
+                else:
+                    notes = [
+                        note
+                        for note in dimension["notes"]
+                        if note.startswith(("命中空洞词", "未见", "why"))
+                    ]
+                for note in notes:
+                    lines.append(f"   ⚠ {note}")
     return "\n".join(lines)
 
 

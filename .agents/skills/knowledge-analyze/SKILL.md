@@ -26,7 +26,7 @@ allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/spec.md), Read(wor
 
 1. **读取**：读 collect.json 与 spec。完成标志：collect.json 可解析，打标签口径已掌握。
 2. **建历史对照**：读 `daily-knowledge/` 下全部 md，得到每个 repo 的上次出现日期。完成标志：daily-knowledge/ 下每个 md 都已扫过。
-3. **打标签与去重**：按项目内容为每个 github 条目自由分配 `themes`（非空标签数组，建议每条 2–4 个；完全无法归类时用空数组表示「未打标签」）；spec 定义的时间窗口内出现过的 repo 须有新进展才保留（判断不了视为无进展），窗口外历史照常输出并标 `repeat`；剔除数记入 `stats.dropped_recent_duplicates`。完成标志：每条保留/剔除都有依据，`themes` 均非缺失。
+3. **打标签与去重**：按项目内容为每个 github 条目自由分配 `themes`（非空标签数组，数量口径见 spec『实现决策 · 标签口径』；完全无法归类时用空数组表示「未打标签」）；spec 定义的时间窗口内出现过的 repo 须有新进展才保留（判断不了视为无进展），窗口外历史照常输出并标 `repeat`；剔除数记入 `stats.dropped_recent_duplicates`。完成标志：每条保留/剔除都有依据，`themes` 均非缺失。
 4. **写分析要点**：逐条写 `core`（项目做了什么、关键事实与理由）与 `why`（一句评价，附是否跟进/怎么用的建议）。素材补足：仓库描述过短或不明时才抓 README，且只读约定范围；素材补抓总量受 spec 限制，失败用已有字段概括并记 `gaps`。完成标志：每条都有言之有物的 core 与 why。
 5. **组装概览之外的部分**：组装 `stats`、`gaps`。不写 `rank`、不写 `overview`、不做选取——这些属于整理阶段。
 6. **组装落盘**：按「输出契约」自检后写 `work/YYYY-MM-DD/analyze.json`；按模板回复。

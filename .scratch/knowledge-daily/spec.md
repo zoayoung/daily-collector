@@ -2,7 +2,7 @@
 
 **Feature:** knowledge-daily
 **Status:** ready-for-agent
-**Updated:** 2026-10-22（v3：自由标签、日报展示、daily-knowledge、token md、GitHub Actions 定时运行）
+**Updated:** 2026-10-22
 
 ## 问题陈述
 
@@ -14,7 +14,7 @@
 
 - 用户说「开始今天的知识采集」，一次跑完 **采集 → 分析 → 整理 → 渲染** 四段，并汇报 token 成本。本地与 GitHub Actions 共用同一套步骤。
 - **采集（Python 脚本，必须使用采集凭证）**：用 GitHub 搜索 API 拉候选集，逐个算出「今日新增 star」，按它降序取前 15–20，写 `collect.json`。
-- **分析（子代理）**：只做内容分析——自由打标签（不再受固定主题表约束）、30 天时间去重、核查新进展、写分析要点与评价，写 `analyze.json`。
+- **分析（子代理）**：只做内容分析——自由打标签（不受固定主题表约束）、30 天时间去重、核查新进展、写分析要点与评价，写 `analyze.json`。
 - **整理（子代理）**：职责分离后的定稿者——从分析结果中决定当日入选条目、润色为成稿、定排序与概览，写 `organize.json`。
 - **渲染（主代理）**：按固定模板把 `organize.json` 机械填充为 `daily-knowledge/YYYY-MM-DD.md`，不改写文字；每条附总 star、今日新增 star 与质量评分。
 - **质量与成本**：`schemas/` 是字段唯一来源，`scripts/validate.py` 做契约校验；`.opencode/plugins/` 的 hook 在整理产物落盘后调 `scripts/score.py` 做 5 维打分并写 `score.json`，低于 60 分打回重来；token 插件聚合消耗，同时写 `daily-knowledge/tokens/YYYY-MM-DD.md` 供人阅读。
@@ -87,15 +87,15 @@
 62. 作为读者，我希望每个项目带 2–4 个标签，以便一眼看出它的技术角度。
 63. 作为读者，我希望标签由分析阶段按内容生成，以便标签如实反映项目而不是被白名单裁剪。
 64. 作为读者，我希望概览把零散标签合并成不超过 6 组，以便标签变多后日报仍然易读。
-65. 作为维护者，我希望删除固定主题表，以便系统不再静默缩小采集与展示范围。
+65. 作为维护者，我希望关注面不受固定主题表限制，以便系统不静默缩小采集与展示范围。
 66. 作为读者，我希望每条项目显示总 star 与今日新增 star，以便同时判断体量与当天热度。
 67. 作为读者，我希望每条项目显示质量评分与 A/B/C 等级，以便知道系统为什么认为它写得好或不好。
 68. 作为读者，我希望标题下保留均分与等级分布，以便一眼看到当天整体质量。
 69. 作为读者，我希望评分不可用时省略评分部分而不是编造数字，以便数据始终可信。
 70. 作为读者，我希望 star 数字带千分位，以便大数字快速可读。
-71. 作为读者，我希望日报存放在 `daily-knowledge/` 而不是 `output/`，以便目录名直接说明内容。
-72. 作为维护者，我希望现有历史日报迁移到新目录，以便改名后去重与重复标记仍然准确。
-73. 作为维护者，我希望路径常量、校验、测试与文档一起改名，以便仓库里只有一套路径口径。
+71. 作为读者，我希望日报存放在 `daily-knowledge/`，以便目录名直接说明内容。
+72. 作为维护者，我希望历史日报位于 `daily-knowledge/`，以便去重与重复标记准确。
+73. 作为维护者，我希望路径常量、校验、测试与文档共用一套路径口径，以便仓库里只有一种存放位置。
 74. 作为读者，我希望 token 报告以 markdown 存在 `daily-knowledge/tokens/YYYY-MM-DD.md`，以便直接阅读。
 75. 作为读者，我希望 token 报告按 run 与代理拆分并给出当日合计，以便定位成本大头。
 76. 作为维护者，我希望 token 报告在每次运行后自动生成，以便不靠手工整理。
@@ -113,12 +113,12 @@
 88. 作为维护者，我希望模型密钥只存在于仓库 Secret，以便公开仓库不泄露凭证。
 89. 作为维护者，我希望 CI 锁定 opencode 版本与模型，以便每天运行可复现。
 90. 作为读者，我希望公开仓库每天出现一份新日报，以便不装本地工具也能阅读。
-91. 作为维护者，我希望首次推送包含迁移后的历史日报，以便去重与趋势从第一天就完整。
+91. 作为维护者，我希望仓库包含历史日报，以便去重与趋势从第一天就完整。
 92. 作为维护者，我希望默认分支为 `main`，以便与新仓库一致。
 93. 作为维护者，我希望 CI 失败时最后一份已发布日报保持不变，以便发布质量不会被半成品污染。
 94. 作为维护者，我希望 CI 只额外配置一个模型密钥，以便采集与回写都复用自带令牌。
 95. 作为维护者，我希望 CI 在无头环境不向用户提问，以便定时任务不会卡住。
-96. 作为维护者，我希望标签校验不再依赖固定词表，以便新增标签无需改配置。
+96. 作为维护者，我希望标签校验不依赖固定词表，以便新增标签无需改配置。
 97. 作为维护者，我希望 CI 先在临时分支上真实跑通再合并 `main`，以便推送后定时任务第一次就能成功。
 98. 作为维护者，我希望 CI 冒烟同时覆盖「当日已存在则跳过」与 `force` 覆盖两条路径，以便幂等行为经过验证。
 
@@ -127,32 +127,32 @@
 - 系统形态：**采集脚本 + 分析子代理 + 整理子代理 + 主代理渲染**，由 GitHub Actions 定时运行。段间以 JSON 传递中间产物，按天落在 `work/YYYY-MM-DD/`。
 - 本节之后的三节——子代理设计、数据契约、编排协议——同属实现决策的细则。
 - 触发：本地固定触发语「开始今天的知识采集」；续跑语「继续知识采集」。CI 直接以同一触发语无头运行，不经过对话。
-- 关注面（v3）：删除 `.scratch/knowledge-daily/topics.md`；分析阶段自由打标签，不再有固定主题白名单；`themes` 为空数组表示「未打标签」，日报渲染为 `[其他]`。
+- 关注面：分析阶段自由打标签，不设固定主题白名单；`themes` 为空数组表示「未打标签」，日报渲染为 `[其他]`。
 - 标签口径：每条建议 2–4 个标签；评分「标签精度」改为按标签个数给分（2–4 个满分、1 个中档、≥5 个降档、0 个 0 分），不再检查关键词证据。
 - 概览口径：整理阶段把自由标签合并为不超过 6 组，再写 `overview.themes`；0 命中省略。
 - 日报展示：每条元信息行固定为「Star：总数（今日 +增量）· 评分：总分 / 等级」；评分来自当日 `score.json`，按 `rank` 与 `full_name` 同时匹配；缺失处理与标题下行见「编排协议 · 渲染模板」。
-- 产物目录（v3）：`output/` 重命名为 `daily-knowledge/`，文件名仍为 `YYYY-MM-DD.md`；现有历史日报迁入，作为去重依据。`KNOWLEDGE_OUTPUT_DIR` 默认值、校验脚本、测试与文档同步改名。
+- 产物目录：日报与 token 报告落在 `daily-knowledge/`，日报文件名为 `YYYY-MM-DD.md`；历史日报是该目录下的去重依据。默认目录可用 `KNOWLEDGE_OUTPUT_DIR` 覆盖。
 - token 报告：`.opencode/plugins/token-stats.js` 在刷新 `work/YYYY-MM-DD/tokens.json` 后，同时写 `daily-knowledge/tokens/YYYY-MM-DD.md`；内容按 run、按代理列出与 `tokens.json` 相同的字段，并给出当日合计。
-- 自动运行（v3）：GitHub Actions 每日 00:00 UTC（08:00 UTC+8）触发；`ubuntu-latest`；步骤为检出 → 安装 uv 与 Node → 同步依赖 → 跑单元测试 → 安装锁定版本的 opencode → 无头执行 `opencode run --auto "开始今天的知识采集"` → 校验产物 → 提交回写。
+- 自动运行：GitHub Actions 每日 00:00 UTC（08:00 UTC+8）触发；`ubuntu-latest`；步骤为检出 → 安装 uv 与 Node → 同步依赖 → 跑单元测试 → 安装锁定版本的 opencode → 无头执行 `opencode run --auto "开始今天的知识采集"` → 校验产物 → 提交回写。
 - CI 参数：opencode 以 `@opencode/cli@2.0.26` 安装（`opencode-ai` 是 1.x 包，勿混用），所有代理统一使用 `oc-go/deepseek-v4.1-flash`；仓库内 `opencode.json` 固定 provider `oc-go` 与默认模型，`apiKey` 用 `{env:OC_GO_API_KEY}` 占位。
 - CI 凭证：模型密钥只放在仓库 Secret `OC_GO_API_KEY`；采集与回写共用 Actions 自带的 `GITHUB_TOKEN`（`permissions.contents: write`），不额外配置 Personal Access Token。
 - CI 幂等：启动 opencode 前检查当日 `daily-knowledge/<日期>.md`；存在且 `force=false` 则跳过并退出 0，`force=true` 按「重新采集并覆盖」执行。
 - CI 失败：不自动重试；把 `work/<日期>/` 上传为 artifact，不提交半成品，最后一份已发布日报保持原样。
 - CI 并发：同一 workflow 使用单一并发组，避免定时与手动触发重叠。
 - CI 冒烟（交付门槛）：先在临时分支 `ci-smoke` 推送并 `workflow_dispatch` 真实跑通，覆盖 `force=true` 全流程与 `force=false` 跳过两种情形，再合并 `main`；不以 `act` 或本地 runner 代替真实 Actions。
-- 首次发布：目标仓库 `https://github.com/zoayoung/daily-collector`（public），默认分支 `main`；本地用 `~/.ssh/git` 推送；首次提交包含迁移后的历史日报与现有测试。
-- 采集脚本：`scripts/collect.py`，由主代理用 `uv run python scripts/collect.py --date YYYY-MM-DD` 执行；`--dry-run` 打印 JSON 不落盘。脚本承担抓取、今日新增 star、排序选取、`gaps` 全流程，产物与旧契约完全一致。
+- 发布仓库：`https://github.com/zoayoung/daily-collector`（public），默认分支 `main`；本地用 `~/.ssh/git` 推送；仓库包含历史日报与现有测试。
+- 采集脚本：`scripts/collect.py`，由主代理用 `uv run python scripts/collect.py --date YYYY-MM-DD` 执行；`--dry-run` 打印 JSON 不落盘。脚本承担抓取、今日新增 star、排序选取、`gaps` 全流程，产物符合 `schemas/collect.schema.json`。
 - 采集异常：未配置 `GITHUB_TOKEN`、搜索 API 失败、候选为空即脚本失败（退出码非 0、不写正式文件）；`star_history` 单次失败记 `gaps` 并把该条记 null。
-- 今日新增 star 口径（沿用）：基线取 `work/**/collect.json` 中**日期早于今日的最近一次**该 repo 的 `stars_total`；仅当基线恰为**上一自然日**时才用于差分（同日重跑不会读到自身产物）。优先级：① 本地差分 `stars_today_source=local_diff`；② 官方兜底 `GET /repos/{owner}/{repo}/stargazers/history`，按 `stars_total` 降序依次兜底，总量 ≤20 次/轮，`stars_today_source=star_history`；③ 都不可得记 null。
-- 排序与选取（沿用）：丢弃 `stars_today=null` 的候选，其余按 `stars_today` 降序取前 15–20；不足 15 按实际数量输出。
-- 认证（必填，相对原始需求的扩展）：脚本从进程环境或项目根 `.env` 读取 `GITHUB_TOKEN`（兼容 `GH_TOKEN`），进程环境优先；缺失即失败，不退回未认证。`.env` 由脚本自行加载（opencode 不自动注入），`.env` 已被 git 忽略，模板见 `.env.example`。认证后配额：搜索 30 次/分、核心 5000 次/时。
+- 今日新增 star 口径：基线取 `work/**/collect.json` 中**日期早于今日的最近一次**该 repo 的 `stars_total`；仅当基线恰为**上一自然日**时才用于差分（同日重跑不会读到自身产物）。优先级：① 本地差分 `stars_today_source=local_diff`；② 官方兜底 `GET /repos/{owner}/{repo}/stargazers/history`，按 `stars_total` 降序依次兜底，总量 ≤20 次/轮，`stars_today_source=star_history`；③ 都不可得记 null。
+- 排序与选取：丢弃 `stars_today=null` 的候选，其余按 `stars_today` 降序取前 15–20；不足 15 按实际数量输出。
+- 认证（必填）：脚本从进程环境或项目根 `.env` 读取 `GITHUB_TOKEN`（兼容 `GH_TOKEN`），进程环境优先；缺失即失败，不退回未认证。`.env` 由脚本自行加载（opencode 不自动注入），`.env` 已被 git 忽略，模板见 `.env.example`。认证后配额：搜索 30 次/分、核心 5000 次/时。
 - 分析阶段：只做自由标签、30 天时间去重、新进展核查、`core`/`why` 分析要点。**不决定入选条数、不写 `rank`/`overview`**。`core`/`why` 为分析要点，不设 100 汉字硬限。
 - 整理阶段：从 analyze 候选中**定稿 15–20 条**（不足按实际），有权剔除但必须计入 `stats.dropped_by_organize` 并在 `gaps` 说明理由；负责 `rank`（按 `stars_today` 降序连续编号）、`overview`（自由标签合并 ≤6 组）、`core` ≤100 汉字（不计英文单词与数字）、`why` 一句评价与建议。
 - 渲染：主代理按固定模板机械填充 `organize.json`，文字与数字照抄、不改写；模板见「编排协议 · 渲染模板」。标题下放质量评分摘要，每条放 star 与评分。
-- 校验：`schemas/*.schema.json` 是字段唯一来源（spec 只解释语义），`scripts/validate.py` 用 jsonschema + 跨文件语义检查；默认校验当日 `work/` 产物，`--all` 校验最近一个含阶段产物的 work 日期目录（跳过只有 tokens.json 的目录），`--file` 可单独校验。
+- 校验：`schemas/*.schema.json` 是字段唯一来源（spec 只解释语义），`scripts/validate.py` 用 jsonschema + 跨文件语义检查；语义阈值见 `config/validation-rules.json`。默认校验当日 `work/` 产物，`--all` 校验最近一个含阶段产物的 work 日期目录（跳过只有 tokens.json 的目录），`--file` 可单独校验。
 - 校验重试：任一阶段校验失败 → 主代理把错误清单回传给同一子代理（脚本则重跑脚本），最多 3 次尝试；第 3 次仍失败即终止任务，保留产物供诊断。
-- 质量评分：`.opencode/plugins/quality-score.js` 在**子代理会话**的 `write`/`edit` 命中 `organize.json` 后调用 `scripts/score.py`（Python，确定性启发式），写 `work/YYYY-MM-DD/score.json` 并把评分卡追加到工具结果尾部。opencode 插件入口须为 JS，打分逻辑全部在 Python；等级阈值、维度权重、长度档位与词表见 `config/score-rules.json`；标签维度只看标签个数，不再读固定主题表。
-- 需求边界：打回与 3 次终止是原始需求（只要求打分与展示）之外的扩展，用于守质量下限；若需回退，删除本节打回环即可。
+- 质量评分：`.opencode/plugins/quality-score.js` 在**子代理会话**的 `write`/`edit` 命中 `organize.json` 后调用 `scripts/score.py`（Python，确定性启发式），写 `work/YYYY-MM-DD/score.json` 并把评分卡追加到工具结果尾部。opencode 插件入口须为 JS，打分逻辑全部在 Python；等级阈值、维度权重、长度档位与词表见 `config/score-rules.json`；标签维度只按标签个数计分，不依赖固定主题表。
+- 质量下限：打回与 3 次终止用于守住评分下限；若需回退，删除打回环与相关步骤即可。
 - 打回：`score.json` 中任一条目 <60 即 `pass=false`；主代理带「低分条目 + 五维明细 + 命中空洞词」续派分析（只重写这些条目的 `core`/`why`）→ 整理（只重写这些条目的文字）→ 校验 → 打分。**按条目计次**：同一条目连续 3 次 <60 即终止任务、不写日报，保留全部产物与 `score.json` 的 `attempts[]` 分数轨迹。
 - token 统计：`.opencode/plugins/token-stats.js` 监听 `message.updated`（assistant 已完成消息）按 `sessionID → 根会话 → agent` 聚合，写 `work/YYYY-MM-DD/tokens.json`，同日多轮按 `runs[]` 追加；同时写 `daily-knowledge/tokens/YYYY-MM-DD.md`。主代理收尾时读取并输出统计表，但不写入日报正文。
 - 数据与版本控制：`work/`（仅放行每日 `work/*/collect.json`）、`.venv/`、`__pycache__/` 忽略；`daily-knowledge/`（日报 + token 报告）、`scripts/`、`schemas/`、`config/`、`.opencode/`、`.agents/`、`tests/`、`pyproject.toml`、`uv.lock` 纳入版本控制。`.gitignore` 用逐层例外只放行 `collect.json`，避免父目录被整目录忽略。
@@ -167,7 +167,7 @@
 | `knowledge-analyze` | 分析 | `knowledge-analyze` |
 | `knowledge-organize` | 整理 | `knowledge-organize` |
 
-采集不再是子代理：`knowledge-collect` 的 agent 与技能已删除，由 `scripts/collect.py` 取代。
+采集由 `scripts/collect.py` 执行，不设子代理与对应技能。
 
 ### 命名与模型
 
@@ -247,7 +247,7 @@
 ```
 
 - 不含 `rank`、`overview`、`dropped_by_organize`。
-- `themes` 为自由标签数组，非空字符串即可，不再校验固定主题表；建议每条 2–4 个。空数组表示「未打标签」（日报渲染为 `[其他]`）。
+- `themes` 为自由标签数组，非空字符串即可，不依赖固定主题表；建议每条 2–4 个。空数组表示「未打标签」（日报渲染为 `[其他]`）。
 - `repeat`：仅历史出现过才有，形如 `{ "last_seen": "YYYY-MM-DD", "new_progress": "一句新进展 | null" }`；`last_seen` 必须真实存在于 `daily-knowledge/` 历史；`new_progress` 仅 30 天窗口内条目可写。
 - 30 天窗口内历史条目须有新进展才保留（无法判定视为无进展，剔除并计入 `dropped_recent_duplicates`）；30 天外照常保留并标 `repeat`。
 
@@ -328,7 +328,7 @@
 - `attempts[]` 保留历次打回分数轨迹，每次评分追加一条；`content_hash` 用于识别同一份产物，内容未变时只刷新时间、不新增计次，主代理据此判为无进展、不无限打回。
 - 校验不通过时不打分：`valid=false`、`pass=false`、`errors[]` 给出校验错误，且不计入 `attempts[]`。
 - 等级：A≥80、B≥60、C<60；`pass` 当且仅当所有条目 ≥60。
-- 「标签精度」按标签个数给分：2–4 个满分，1 个中档，≥5 个降档，0 个 0 分；具体分值与上限见 `config/score-rules.json`，不再依赖固定主题表或关键词证据。
+- 「标签精度」按标签个数给分：2–4 个满分，1 个中档，≥5 个降档，0 个 0 分；具体分值与上限见 `config/score-rules.json`，不依赖固定主题表或关键词证据。
 
 ### tokens.json（用量产物）
 
@@ -484,7 +484,7 @@
 **脚本 CLI + 产物文件**。`collect` / `validate` / `score` 三个命令是唯一 seam，覆盖采集选取、契约校验、跨文件语义（rank 连续、core 字数、repeat 历史、剔除计数）、评分/等级/attempts 与自由标签；不新增模块级 seam。
 
 - 真实网络不纳入测试：`tests/fixtures/` 保存 GitHub 的真实返回快照（搜索 + star 历史，注明抓取日期），测试用本地 HTTP 服务器回放，经 `KNOWLEDGE_GITHUB_API` 指向；覆盖响应形状解析、`IncompleteRead` 重试与无凭证守门。
-- `work/` 与 `daily-knowledge/` 用 `KNOWLEDGE_WORK_DIR` / `KNOWLEDGE_OUTPUT_DIR` 指向临时目录，测试不读写真实目录；重命名后环境变量名保持不变。
+- `work/` 与 `daily-knowledge/` 用 `KNOWLEDGE_WORK_DIR` / `KNOWLEDGE_OUTPUT_DIR` 指向临时目录，测试不读写真实目录。
 - 插件不为新行为新建 seam：`quality-score.js` 仍只转发评分；`token-stats.js` 新增的 token md 属确定性排版，由端到端验收观察（文件存在、表格数值与 `tokens.json` 一致），不做 JS 单测。
 - GitHub Actions 不新建 seam：工作流语法由 GitHub 解析；在临时 `ci-smoke` 分支用真实 `workflow_dispatch` 验收（`force=true` 全流程、`force=false` 跳过、失败上传 artifact），跑通后才合并 `main`；不引入 `act` 或本地 runner 作为替身。
 - 端到端仍只做人工验收：一次真实本地运行 + 一次真实 CI 运行，检查日报、评分卡、token md 与提交内容。
@@ -503,7 +503,7 @@
 - `validate.py` 对 `work/2026-10-09`、`work/2026-10-11` 的历史 collect.json 校验通过。
 - 合成 organize.json 样本（含 A/B/C 条目、repeat、overview）跑通 validate + score，并验证第二次打分 attempt 递增。
 - 自由标签用例：任意非空标签与空数组均通过校验；评分只随标签个数变化。
-- 改名回归：把 `KNOWLEDGE_OUTPUT_DIR` 指向含历史日报的临时目录，repeat 历史校验与 `--all` 仍通过。
+- 路径回归：把 `KNOWLEDGE_OUTPUT_DIR` 指向含历史日报的临时目录，repeat 历史校验与 `--all` 仍通过。
 - 仓库已用 `unittest` 覆盖采集脚本的 CLI 行为（`test_collect.py`、`test_validate_all.py`）；子代理文笔、插件排版与 CI 行为仍以人工验收为主。
 
 ### 端到端验收清单
@@ -543,16 +543,13 @@
 - 自动重试：CI 失败不自动重跑。
 - LLM 打分：评分保持确定性启发式，不引入模型判定。
 - 采集源扩展：当前仅 GitHub，不接 Hacker News 或其他站点。
-- issue tracker 的完整配置（triage labels、domain docs）：本次只落地最小 tracker 配置。
+- issue tracker 的完整配置（triage labels、domain docs）超出系统范围。
 
 ## 备注
 
-- 固定主题表已移除，标签由分析阶段自由生成；若将来需要引导，在技能正文里加「标签建议」，不要恢复白名单。
+- 标签由分析阶段自由生成；若将来需要引导，在技能正文里加「标签建议」，不恢复白名单。
 - 自动运行配置：在 GitHub 仓库 `Settings → Secrets and variables → Actions` 添加 `OC_GO_API_KEY`；定时为 `0 0 * * *` UTC（08:00 UTC+8）；手动 dispatch 的 `force` 用于覆盖当天。
-- 本地首次推送使用 `~/.ssh/git`；CI 使用自带 `GITHUB_TOKEN`，不需要 Personal Access Token。
-- 首次启用 CI 前先把历史日报迁到 `daily-knowledge/`，否则去重与概览历史为空。
-- 本次变更建议补两条 ADR：自由标签取代固定主题、GitHub Actions 无头运行流水线。
-- 实现时同步更新 `AGENTS.md`（目录、自动运行、凭证）、`GLOSSARY.md`（自由标签、token 报告）、两个技能（不再读 `topics.md`、历史目录改为 `daily-knowledge/`）与 `config/score-rules.json`（标签个数分档）。
+- 本地推送使用 `~/.ssh/git`；CI 使用自带 `GITHUB_TOKEN`，不需要 Personal Access Token。
 - 本 spec 落在 local markdown tracker：`.scratch/knowledge-daily/spec.md`；tracker 配置见 `docs/agents/issue-tracker.md`。
 - 术语见根目录 `GLOSSARY.md`；难以反悔的技术取舍见 `docs/adr/`。
 - 采集凭证的获取与配置步骤见 `AGENTS.md`「凭证」，模板见 `.env.example`。

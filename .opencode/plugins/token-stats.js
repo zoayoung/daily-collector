@@ -40,6 +40,8 @@ function addBucket(target, message) {
 
 const AGENT_ORDER = ["build", "knowledge-analyze", "knowledge-organize"]
 const BUCKET_KEYS = ["messages", "input", "output", "cache_read", "cache_write", "reasoning", "cost"]
+// 子会话向上找根会话的最大层数，防止异常数据造成无限循环
+const MAX_SESSION_DEPTH = 10
 
 function orderedAgents(agents) {
   const rest = Object.keys(agents)
@@ -52,12 +54,9 @@ function bucketCells(bucket) {
   return BUCKET_KEYS.map((key) => (bucket?.[key] == null ? "" : String(bucket[key])))
 }
 
-function tableRow(label, bucket) {
-  return `| ${label} | ${bucketCells(bucket).join(" | ")} |`
-}
-
-function tableRowWithoutLabel(bucket) {
-  return `| ${bucketCells(bucket).join(" | ")} |`
+function tableRow(bucket, label) {
+  const cells = bucketCells(bucket).join(" | ")
+  return label == null ? `| ${cells} |` : `| ${label} | ${cells} |`
 }
 
 function endClock(startedAt, updatedAt) {
@@ -75,8 +74,8 @@ function sumRuns(runs) {
 
 function renderReport(date, runs) {
   const sections = runs.map((run, index) => {
-    const rows = orderedAgents(run.agents).map((agent) => tableRow(agent, run.agents[agent]))
-    if (run.total) rows.push(tableRow("合计", run.total))
+    const rows = orderedAgents(run.agents).map((agent) => tableRow(run.agents[agent], agent))
+    if (run.total) rows.push(tableRow(run.total, "合计"))
     return [
       `## Run ${index + 1} · ${run.started_at} – ${endClock(run.started_at, run.updated_at)}`,
       "",
@@ -91,7 +90,7 @@ function renderReport(date, runs) {
     "",
     "| 消息数 | input | output | cache 读 | cache 写 | reasoning | cost(USD) |",
     "| --- | --- | --- | --- | --- | --- | --- |",
-    tableRowWithoutLabel(sumRuns(runs)),
+    tableRow(sumRuns(runs)),
   ].join("\n")
 
   return [`# Token 统计 · ${date}`, ...sections, daily].join("\n\n") + "\n"
@@ -117,7 +116,7 @@ export const TokenStats = async ({ client, directory, worktree }) => {
     if (sessionRoot.has(sessionID)) return sessionRoot.get(sessionID)
     sessionRoot.set(sessionID, sessionID)
     let current = sessionID
-    for (let depth = 0; depth < 10; depth += 1) {
+    for (let depth = 0; depth < MAX_SESSION_DEPTH; depth += 1) {
       let parent
       try {
         const response = await client.session.get({ path: { id: current } })
@@ -132,12 +131,17 @@ export const TokenStats = async ({ client, directory, worktree }) => {
     return current
   }
 
+  // opencode 的消息信息在不同版本里用 mode 或 agent 表示代理名，按此顺序取第一个有值的
+  function agentName(info) {
+    return info.mode || info.agent || "unknown"
+  }
+
   function record(info) {
     if (!info || info.role !== "assistant" || info.time?.completed == null) return
     const tokens = info.tokens || {}
     messages.set(info.id, {
       sessionID: info.sessionID,
-      agent: info.mode || info.agent || "unknown",
+      agent: agentName(info),
       created: info.time?.created ?? Date.now(),
       input: tokens.input || 0,
       output: tokens.output || 0,
@@ -185,10 +189,13 @@ export const TokenStats = async ({ client, directory, worktree }) => {
     let existing = { date: day, runs: [] }
     try {
       existing = JSON.parse(await fs.readFile(file, "utf8"))
-      if (!Array.isArray(existing.runs)) existing.runs = []
-    } catch {
-      existing = { date: day, runs: [] }
+    } catch (error) {
+      // 文件不存在时正常新建；存在却读不出或解析失败时丢弃本轮统计，
+      // 不覆盖 tokens.json、不生成 md，避免破坏历史数据
+      if (error?.code !== "ENOENT") return
     }
+    if (!existing || typeof existing !== "object") return
+    if (!Array.isArray(existing.runs)) existing.runs = []
 
     for (const run of grouped.values()) {
       delete run.start_ms
