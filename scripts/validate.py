@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _common import (
+    CONFIG_DIR,
     DAILY_KNOWLEDGE_DIR,
     DATE_RE,
     SCHEMA_DIR,
@@ -34,6 +35,23 @@ STAGE_SCHEMAS = {
     "analyze": "analyze.schema.json",
     "organize": "organize.schema.json",
 }
+
+VALIDATION_RULE_KEYS = ("dedupe_window_days", "min_items", "core_max_cjk")
+
+
+def load_validation_rules() -> dict:
+    """读取语义阈值配置；缺失或缺键时给出可定位的失败信息。"""
+    path = CONFIG_DIR / "validation-rules.json"
+    try:
+        rules = read_json(path)
+    except FileNotFoundError as error:
+        raise SystemExit(f"❌ 校验失败：找不到校验规则 {path.as_posix()}") from error
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"❌ 校验失败：无法读取校验规则 {path.as_posix()}：{error}") from error
+    missing = [key for key in VALIDATION_RULE_KEYS if key not in rules]
+    if missing:
+        raise SystemExit(f"❌ 校验失败：{path.as_posix()} 缺少 {', '.join(missing)}")
+    return rules
 
 
 def load_registry() -> Registry:
@@ -92,7 +110,14 @@ def _days_between(earlier: str, later: str) -> int:
     return (date.fromisoformat(later) - date.fromisoformat(earlier)).days
 
 
-def _check_repeat(item: dict, day: str, history: set[str], where: str, errors: list[str]) -> None:
+def _check_repeat(
+    item: dict,
+    day: str,
+    history: set[str],
+    window_days: int,
+    where: str,
+    errors: list[str],
+) -> None:
     repeat = item.get("repeat")
     if not repeat:
         return
@@ -103,10 +128,10 @@ def _check_repeat(item: dict, day: str, history: set[str], where: str, errors: l
     if (
         is_date(last_seen)
         and is_date(day)
-        and _days_between(last_seen, day) > 30
+        and _days_between(last_seen, day) > window_days
         and repeat.get("new_progress")
     ):
-        errors.append(f"{where} 30 天外的条目不应写 new_progress")
+        errors.append(f"{where} {window_days} 天外的条目不应写 new_progress")
 
 
 def _check_order(items: list[dict], errors: list[str], where: str) -> None:
@@ -118,6 +143,7 @@ def _check_order(items: list[dict], errors: list[str], where: str) -> None:
 def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
+    rules = load_validation_rules()
 
     schema = read_json(SCHEMA_DIR / STAGE_SCHEMAS[stage])
     contracts = _contracts()
@@ -145,7 +171,7 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
         _unknown(item, item_keys, where, errors)
         names.append(item.get("full_name"))
         if stage != "collect":
-            _check_repeat(item, day, history, where, errors)
+            _check_repeat(item, day, history, rules["dedupe_window_days"], where, errors)
 
     duplicates = sorted({name for name in names if names.count(name) > 1})
     if duplicates:
@@ -155,8 +181,10 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
         nulls = [item.get("full_name") for item in items if item.get("stars_today") is None]
         if nulls:
             errors.append(f"collect 不应包含 stars_today=null 的条目：{', '.join(nulls)}")
-        if len(items) < 15:
-            warnings.append(f"入榜不足 15 条（实际 {len(items)} 条），gaps 中应说明原因")
+        if len(items) < rules["min_items"]:
+            warnings.append(
+                f"入榜不足 {rules['min_items']} 条（实际 {len(items)} 条），gaps 中应说明原因"
+            )
         _check_order(items, errors, "github")
 
     if stage in {"analyze", "organize"}:
@@ -178,8 +206,9 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
             errors.append(f"rank 必须是 1..{len(items)} 的连续整数，实际为 {ranks}")
         for index, item in enumerate(items, start=1):
             length = cjk_count(item.get("core"))
-            if length > 100:
-                errors.append(f"github[{index}] core 含 {length} 个汉字，超过 100")
+            limit = rules["core_max_cjk"]
+            if length > limit:
+                errors.append(f"github[{index}] core 含 {length} 个汉字，超过 {limit}")
         overview = data.get("overview") or {}
         overview_schema = schema["properties"]["overview"]
         if "$ref" in overview_schema:

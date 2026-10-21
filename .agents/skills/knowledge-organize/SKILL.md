@@ -22,7 +22,7 @@ allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/spec.md), Read(wor
 1. **读取**：读 analyze.json 与 spec 产出节。完成标志：候选条目、自由标签、`repeat` 已掌握。
 2. **定稿选取**：从候选中决定当日入选条目（条数区间与不足时的处理见 spec）；有权剔除，但每条剔除都要记入 `stats.dropped_by_organize` 并在 `gaps` 写明理由。已被分析阶段剔除的条目不复活、不新增候选。
 3. **润色成稿**：逐条写 `core`（长度上限见 spec，不计英文单词与数字）与 `why`（一句评价，附建议）；事实数据（star、日期、链接、标签、repeat）照抄，不改写、不编造。
-4. **排序与概览**：按 `stars_today` 降序给连续 `rank`；写 `overview.lead`（今日一句总述）与 `overview.themes`（把当日自由标签合并为不超过 6 组，每组一句要点；0 命中省略）。
+4. **排序与概览**：按 `stars_today` 降序给连续 `rank`；写 `overview.lead`（今日一句总述）与 `overview.themes`（把当日自由标签合并为概览分组，每组一句要点；概览口径见 spec『实现决策 · 概览口径』）。
 5. **自检落盘**：对照「输出契约」自检，覆盖写入 `work/YYYY-MM-DD/organize.json`；按模板回复。
 
 **打回模式**：只重写清单中低分条目的 `core` 与 `why`，其余条目、`rank`、`overview`、`stats` 保持不变；除非剔除理由已不成立，否则不改变入选集合。
@@ -36,7 +36,7 @@ allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/spec.md), Read(wor
 - `date` 为委派日期。
 - `github`：analyze 全部字段 + `rank`；`rank` 连续、与 `stars_today` 降序一致；条目数符合 spec 区间。
 - `core` 遵守 spec 的字数上限；`why` 为一句话评价与建议。
-- `overview`：`lead` 一句 + `themes[]`（`{name, note}`，只含当日命中的分组，不超过 6 组；`name` 可为标签或合并后的组名）。
+- `overview`：`lead` 一句 + `themes[]`（`{name, note}`，只含当日命中的分组，口径见 spec『实现决策 · 概览口径』；`name` 可为标签或合并后的组名）。
 - `stats`：`{ github_count, dropped_recent_duplicates, dropped_by_organize }`；`github_count` 等于条数，`dropped_recent_duplicates` 沿用 analyze.json。
 - `gaps`：记录整理阶段的剔除理由与素材问题。
 
