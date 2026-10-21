@@ -164,8 +164,28 @@ export default Plugin.define({
       })
     }
 
+    // 根会话可能在插件订阅事件之前就已创建，这里补查一次会话信息拿代理名与父会话
+    async function ensureAgent(sessionID) {
+      const session = sessions.get(sessionID)
+      if (session?.agent && session.agent !== "unknown") return
+      try {
+        const info = await ctx.session.get({ sessionID })
+        sessions.set(sessionID, {
+          ...session,
+          agent: info?.agent || session?.agent || "unknown",
+          parentID: info?.parentID ?? session?.parentID,
+          created: session?.created ?? Date.now(),
+        })
+      } catch {
+        if (!session) sessions.set(sessionID, { agent: "unknown", created: Date.now() })
+      }
+    }
+
     async function flush() {
       if (sessions.size === 0) return
+      for (const sessionID of sessions.keys()) {
+        await ensureAgent(sessionID)
+      }
 
       const grouped = new Map()
       for (const [sessionID, session] of sessions) {
