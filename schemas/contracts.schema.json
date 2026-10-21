@@ -63,7 +63,7 @@
     "repeat": {
       "type": ["object", "null"],
       "additionalProperties": false,
-      "required": ["last_seen", "new_progress"],
+      "required": ["last_seen"],
       "properties": {
         "last_seen": {
           "type": "string",

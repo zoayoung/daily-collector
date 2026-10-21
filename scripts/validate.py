@@ -134,9 +134,6 @@ def _check_duplicate_window(
         return
     if last_seen != latest:
         errors.append(f"{where} repeat.last_seen={last_seen} 应等于最近发布日期 {latest}")
-        return
-    if repeat.get("new_progress"):
-        errors.append(f"{where} {window_days} 天外的条目不应写 new_progress")
 
 
 def _check_order(items: list[dict], errors: list[str], where: str) -> None:
@@ -219,6 +216,22 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
         dropped = stats.get("dropped_recent_duplicates")
         if not isinstance(dropped, int) or dropped < 0:
             errors.append("stats.dropped_recent_duplicates 必须是非负整数")
+        collect_path = (path.parent if path else None)
+        collect_path = collect_path / "collect.json" if collect_path else None
+        if collect_path and collect_path.exists():
+            try:
+                collected = read_json(collect_path)
+            except (OSError, ValueError):
+                collected = None
+            if isinstance(collected, dict):
+                expected_dropped = (collected.get("stats") or {}).get(
+                    "dropped_recent_duplicates", 0
+                )
+                if dropped != expected_dropped:
+                    errors.append(
+                        "stats.dropped_recent_duplicates="
+                        f"{dropped} 应沿用 collect.json 的 {expected_dropped}"
+                    )
 
     if stage == "organize":
         ranks = [item.get("rank") for item in items]

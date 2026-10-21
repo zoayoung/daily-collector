@@ -109,13 +109,12 @@ class ValidationThresholdTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn("30 天窗口", result.stdout)
 
-    def test_new_progress_beyond_window_is_rejected(self) -> None:
+    def test_legacy_new_progress_beyond_window_is_accepted(self) -> None:
         document = self.analyze_document("2026-09-21", "发布了新版本")
 
         result = self.validate(self.write("analyze.json", document))
 
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertIn("30 天外的条目不应写 new_progress", result.stdout)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def organize_document(self, core: str) -> dict:
         item = repo("owner/repo")
