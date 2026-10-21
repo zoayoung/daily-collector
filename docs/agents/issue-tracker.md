@@ -9,7 +9,7 @@
 - 实现类议题每张工单一文件，位于 `.scratch/<feature-slug>/issues/<NN>-<slug>.md`，从 `01` 开始编号，绝不合并为单个工单文件
 - 分诊（triage）状态记录在每个议题文件顶部附近的 `Status:` 行（角色字符串见 `triage-labels.md`）
 - 评论与对话历史追加到文件底部，置于 `## Comments` 标题之下
-- 工单完成即删除；需要审计时移入 `issues/archive/`。实施过程不并入 `spec.md`
+- 工单完成即删除；需要审计时移入 `issues/archive/`，并把 `Status:` 改为 `done`。实施过程不并入 `spec.md`
 - 原始需求按日期归档到 `.scratch/<feature-slug>/requirements/YYYY-MM-DD-<slug>.md`，只读
 
 ## 当某个技能说「发布到议题追踪器」时

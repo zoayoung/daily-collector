@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 
 from tests.support import FixtureServer, run_cli, search_request
@@ -40,8 +41,10 @@ class CandidatePoolTest(unittest.TestCase):
         self.work = Path(self._tmp.name) / "work"
         self.output = Path(self._tmp.name) / "daily-knowledge"
 
-    def collect(self, search_pages: dict[tuple[str, int], object]) -> tuple[dict, list[str]]:
-        with FixtureServer(search_pages=search_pages) as server:
+    def collect(
+        self, search_pages: dict[tuple[str, int], object], **kwargs: object
+    ) -> tuple[dict, list[str]]:
+        with FixtureServer(search_pages=search_pages, **kwargs) as server:
             result = run_cli(
                 "collect.py",
                 "--date",
@@ -114,6 +117,22 @@ class CandidatePoolTest(unittest.TestCase):
             [entry["full_name"] for entry in entries],
             [f"owner/repo{i:02d}" for i in range(50)],
         )
+
+    def test_zero_daily_gain_falls_back_to_total_order_and_says_so(self) -> None:
+        week = int(datetime(2026, 10, 18, tzinfo=UTC).timestamp())
+        history = [{"week": week, "total": 0, "days": [0, 0, 0, 0, 0, 0, 0]}]
+        pages = empty_pages()
+        pages[("100..500", 1)] = [item("owner/small", 300), item("owner/big", 500)]
+
+        data, _ = self.collect(pages, star_history_body=history)
+
+        self.assertEqual(
+            [entry["full_name"] for entry in data["github"]],
+            ["owner/big", "owner/small"],
+        )
+        self.assertEqual([entry["stars_today"] for entry in data["github"]], [0, 0])
+        self.assertTrue(any("今日增量全为 0" in gap for gap in data["gaps"]))
+        self.assertFalse(any("有增量" in gap for gap in data["gaps"]))
 
     def test_picks_by_different_local_diff_gains_in_descending_order(self) -> None:
         baseline = self.work / "2026-10-20" / "collect.json"

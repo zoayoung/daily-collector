@@ -4,11 +4,11 @@
 
 **Blocked by:** 01: 严格 30 天重复窗口（采集过滤 + 校验硬闸）；02: 候选池扩容与 50 条入榜集
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 分析处理入榜集的全部条目，不再自行剔除重复窗口内项目。
-- [ ] 只为 30 天外再次出现的项目写 `repeat.last_seen`，且日期等于最近一次发布日期。
-- [ ] 分析产物不再写入 `new_progress`；契约先把该字段变为可选，保证旧的整理与渲染仍能工作。
-- [ ] `dropped_recent_duplicates` 沿用入榜集统计；旧入榜集没有统计时按 0 处理。
-- [ ] 测试覆盖 50 条分析、30 天外 `repeat`、无 `new_progress` 输出、统计透传。
-- [ ] 校验在 expand 阶段仍接受旧的 `new_progress`，但分析新产物不产生它。
+- [x] 分析处理入榜集的全部条目，不再自行剔除重复窗口内项目。
+- [x] 只为 30 天外再次出现的项目写 `repeat.last_seen`，且日期等于最近一次发布日期。
+- [x] 分析产物不再写入 `new_progress`；契约先把该字段变为可选，保证旧的整理与渲染仍能工作。
+- [x] `dropped_recent_duplicates` 沿用入榜集统计；旧入榜集没有统计时按 0 处理。
+- [x] 测试覆盖 50 条分析、30 天外 `repeat`、无 `new_progress` 输出、统计透传。
+- [x] 校验在 expand 阶段仍接受旧的 `new_progress`，但分析新产物不产生它。

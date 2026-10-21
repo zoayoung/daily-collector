@@ -225,11 +225,12 @@ def build(day: str) -> dict:
         repo["stars_today"] = value
         repo["stars_today_source"] = "star_history"
 
-    ranked = sorted(
-        (repo for repo in eligible if repo["stars_today"] is not None),
-        key=lambda repo: repo["stars_today"],
-        reverse=True,
-    )
+    with_gain = [repo for repo in eligible if repo["stars_today"] is not None]
+    all_zero_gain = not any(repo["stars_today"] for repo in with_gain)
+    if all_zero_gain:
+        ranked = sorted(with_gain, key=lambda repo: repo["stars_total"] or 0, reverse=True)
+    else:
+        ranked = sorted(with_gain, key=lambda repo: repo["stars_today"], reverse=True)
     picked = ranked[:PICK_LIMIT]
     if not picked:
         raise RuntimeError(
@@ -245,7 +246,9 @@ def build(day: str) -> dict:
         f"star_history 调用 {history_calls} 次（上限 {MAX_HISTORY_CALLS}），失败 {history_failed} 次"
     )
     if len(ranked) > len(picked):
-        gaps.append(f"未纳入 {len(ranked) - len(picked)} 个有增量的候选（排名在 {PICK_LIMIT} 之后）")
+        gaps.append(f"未纳入 {len(ranked) - len(picked)} 个候选（排名在 {PICK_LIMIT} 之后）")
+    if picked and not any(repo["stars_today"] for repo in picked):
+        gaps.append("今日增量全为 0（数据可能尚未产生），本次按 stars_total 降序排列")
     min_items = rules["collect_min_items"]
     if len(picked) < min_items:
         gaps.append(f"入榜不足 {min_items} 条（实际 {len(picked)} 条）")

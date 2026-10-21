@@ -58,6 +58,7 @@ class FixtureServer:
     完整响应 dict 或原始字节。未覆盖的请求回放 search_repositories.json。
 
     search_failures 按 (star 区间, 页码) 指定要返回的 HTTP 状态码，用于模拟单区间失败。
+    star_history_body 可覆盖 star 历史响应，用于模拟当天增量尚未产生的全 0 返回。
     """
 
     def __init__(
@@ -65,10 +66,12 @@ class FixtureServer:
         break_first_search: bool = False,
         search_pages: dict[tuple[str, int], object] | None = None,
         search_failures: dict[tuple[str, int], int] | None = None,
+        star_history_body: object | None = None,
     ) -> None:
         self.break_first_search = break_first_search
         self.search_pages = search_pages or {}
         self.search_failures = search_failures or {}
+        self.star_history_body = star_history_body
         self.requests: list[str] = []
         self._search_requests = 0
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
@@ -104,7 +107,10 @@ class FixtureServer:
                     body = outer._search_body(self.path)
                     broken = outer.break_first_search and outer._search_requests == 1
                 elif "/stargazers/history" in self.path:
-                    body = fixture_bytes("star_history.json")
+                    if outer.star_history_body is None:
+                        body = fixture_bytes("star_history.json")
+                    else:
+                        body = json.dumps(outer.star_history_body, ensure_ascii=False).encode("utf-8")
                     broken = False
                 elif self.path == "/rate_limit":
                     body = b"{}"

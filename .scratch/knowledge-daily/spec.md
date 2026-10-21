@@ -18,7 +18,7 @@
 - **整理（子代理）**：职责分离后的定稿者——从分析结果中定稿 10–15 条、润色为成稿、定排序与概览，写 `organize.json`；批量剔除时记数并按批次说明理由。
 - **渲染（主代理）**：按固定模板把 `organize.json` 机械填充为 `daily-knowledge/YYYY-MM-DD.md`，不改写文字；每条附总 star、今日新增 star 与质量评分。
 - **质量与成本**：`schemas/` 是字段唯一来源，`scripts/validate.py` 做契约校验与 30 天窗口硬校验；`.opencode/plugins/` 的 hook 在整理产物落盘后调 `scripts/score.py` 做 5 维打分并写 `score.json`，低于 60 分打回重来；token 插件聚合消耗，同时写 `daily-knowledge/tokens/YYYY-MM-DD.md` 供人阅读。
-- **自动发布（GitHub Actions）**：每天 00:00 UTC（08:00 UTC+8）无头运行同一套流水线，把日报、token 报告与每日 `collect.json` 提交回公开仓库 `zoayoung/daily-collector` 的 `main` 分支。
+- **自动发布（GitHub Actions）**：每天 14:00 UTC（22:00 UTC+8）无头运行同一套流水线，把日报、token 报告与每日 `collect.json` 提交回公开仓库 `zoayoung/daily-collector` 的 `main` 分支。
 - 中间产物按天落在 `work/YYYY-MM-DD/`（仅每日 `collect.json` 进 git，其余本地保留）。
 
 ## 用户故事
@@ -145,7 +145,7 @@
 - 日报展示：每条元信息行固定为「Star：总数（今日 +增量）· 评分：总分 / 等级」；评分来自当日 `score.json`，按 `rank` 与 `full_name` 同时匹配；缺失处理与标题下行见「编排协议 · 渲染模板」。
 - 产物目录：日报与 token 报告落在 `daily-knowledge/`，日报文件名为 `YYYY-MM-DD.md`；历史日报是该目录下的去重依据。默认目录可用 `KNOWLEDGE_OUTPUT_DIR` 覆盖。
 - token 报告：`.opencode/plugins/token-stats.js` 在刷新 `work/YYYY-MM-DD/tokens.json` 后，同时写 `daily-knowledge/tokens/YYYY-MM-DD.md`；内容按 run、按代理列出与 `tokens.json` 相同的字段，并给出当日合计。
-- 自动运行：GitHub Actions 每日 00:00 UTC（08:00 UTC+8）触发；`ubuntu-latest`；步骤为检出 → 安装 uv 与 Node → 同步依赖 → 跑单元测试 → 安装锁定版本的 opencode → 无头执行 `opencode run --auto "开始今天的知识采集"` → 校验产物 → 提交回写。
+- 自动运行：GitHub Actions 每日 14:00 UTC（22:00 UTC+8）触发（此时当天 star 增量已产生，过早运行会得到全 0 增量）；`ubuntu-latest`；步骤为检出 → 安装 uv 与 Node → 同步依赖 → 跑单元测试 → 安装锁定版本的 opencode → 无头执行 `opencode run --auto "开始今天的知识采集"` → 校验产物 → 提交回写。
 - CI 参数：opencode 以 `@opencode/cli@2.0.26` 安装（`opencode-ai` 是 1.x 包，勿混用），所有代理统一使用 `oc-go/deepseek-v4.1-flash`；仓库内 `opencode.json` 固定 provider `oc-go` 与默认模型，`apiKey` 用 `{env:OC_GO_API_KEY}` 占位。
 - CI 凭证：模型密钥只放在仓库 Secret `OC_GO_API_KEY`；采集与回写共用 Actions 自带的 `GITHUB_TOKEN`（`permissions.contents: write`），不额外配置 Personal Access Token。
 - CI 幂等：启动 opencode 前检查当日 `daily-knowledge/<日期>.md`；存在且 `force=false` 则跳过并退出 0，`force=true` 按「重新采集并覆盖」执行。
@@ -574,7 +574,7 @@
 
 - 标签由分析阶段自由生成；若将来需要引导，在技能正文里加「标签建议」，不恢复白名单。
 - 30 天重复窗口是硬规则：窗口内零例外，窗口外才标 `🔁`；判断依据只看已发布日报，不看未发布的采集产物。
-- 自动运行配置：在 GitHub 仓库 `Settings → Secrets and variables → Actions` 添加 `OC_GO_API_KEY`；定时为 `0 0 * * *` UTC（08:00 UTC+8）；手动 dispatch 的 `force` 用于覆盖当天。
+- 自动运行配置：在 GitHub 仓库 `Settings → Secrets and variables → Actions` 添加 `OC_GO_API_KEY`；定时为 `0 14 * * *` UTC（22:00 UTC+8，此时当日 star 增量已产生）；手动 dispatch 的 `force` 用于覆盖当天。
 - 本地推送使用 `~/.ssh/git`；CI 使用自带 `GITHUB_TOKEN`，不需要 Personal Access Token。
 - 本 spec 落在 local markdown tracker：`.scratch/knowledge-daily/spec.md`；tracker 配置见 `docs/agents/issue-tracker.md`。
 - 术语见根目录 `GLOSSARY.md`（候选集 / 入榜集 / 定稿集 / 重复窗口）；严格去重与扩容候选池的取舍见 `docs/adr/0005-严格去重与扩容候选池.md`。
