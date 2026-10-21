@@ -124,10 +124,10 @@ class ValidateWindowTest(unittest.TestCase):
             output_dir=self.daily,
         )
 
-    def test_30_days_ago_is_rejected_even_with_repeat_and_new_progress(self) -> None:
+    def test_30_days_ago_is_rejected_even_with_repeat(self) -> None:
         day = "2026-10-22"
         self.write_daily("2026-09-22", "owner/recent")
-        item = analyzed("owner/recent", {"last_seen": "2026-09-22", "new_progress": "发布了新版本"})
+        item = analyzed("owner/recent", {"last_seen": "2026-09-22"})
 
         result = self.validate(self.write(day, "analyze.json", self.analyze_document(day, item)))
 
@@ -147,7 +147,7 @@ class ValidateWindowTest(unittest.TestCase):
         day = "2026-10-22"
         self.write_daily("2026-08-01", "owner/old")
         self.write_daily("2026-09-21", "owner/old")
-        item = analyzed("owner/old", {"last_seen": "2026-08-01", "new_progress": None})
+        item = analyzed("owner/old", {"last_seen": "2026-08-01"})
 
         result = self.validate(self.write(day, "analyze.json", self.analyze_document(day, item)))
 
@@ -158,7 +158,7 @@ class ValidateWindowTest(unittest.TestCase):
         day = "2026-10-22"
         self.write_daily("2026-08-01", "owner/old")
         self.write_daily("2026-09-21", "owner/old")
-        item = analyzed("owner/old", {"last_seen": "2026-09-21", "new_progress": None})
+        item = analyzed("owner/old", {"last_seen": "2026-09-21"})
 
         result = self.validate(self.write(day, "analyze.json", self.analyze_document(day, item)))
 

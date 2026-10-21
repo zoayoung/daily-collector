@@ -81,7 +81,7 @@ class ValidationThresholdTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn("入榜不足", result.stdout)
 
-    def analyze_document(self, last_seen: str, new_progress: str | None) -> dict:
+    def analyze_document(self, last_seen: str) -> dict:
         (self.daily / f"{last_seen}.md").write_text(
             "# 历史日报\n\n### 1. owner/repo\n", encoding="utf-8"
         )
@@ -89,7 +89,7 @@ class ValidationThresholdTest(unittest.TestCase):
         item.update(
             {
                 "themes": ["示例"],
-                "repeat": {"last_seen": last_seen, "new_progress": new_progress},
+                "repeat": {"last_seen": last_seen},
                 "core": "示例项目的分析要点。",
                 "why": "示例项目的评价与建议。",
             }
@@ -101,16 +101,16 @@ class ValidationThresholdTest(unittest.TestCase):
             "gaps": [],
         }
 
-    def test_new_progress_at_window_edge_is_rejected(self) -> None:
-        document = self.analyze_document("2026-09-22", "发布了新版本")
+    def test_window_edge_is_rejected(self) -> None:
+        document = self.analyze_document("2026-09-22")
 
         result = self.validate(self.write("analyze.json", document))
 
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn("30 天窗口", result.stdout)
 
-    def test_legacy_new_progress_beyond_window_is_accepted(self) -> None:
-        document = self.analyze_document("2026-09-21", "发布了新版本")
+    def test_repeat_beyond_window_is_accepted(self) -> None:
+        document = self.analyze_document("2026-09-21")
 
         result = self.validate(self.write("analyze.json", document))
 

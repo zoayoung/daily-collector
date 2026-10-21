@@ -20,7 +20,7 @@ allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/spec.md), Read(wor
 ## 执行步骤
 
 1. **读取**：读 analyze.json 与 spec 产出节。完成标志：候选条目、自由标签、`repeat` 已掌握。
-2. **定稿选取**：从候选中决定当日入选条目（条数区间与不足时的处理见 spec）；有权剔除，但每条剔除都要记入 `stats.dropped_by_organize` 并在 `gaps` 写明理由。已被分析阶段剔除的条目不复活、不新增候选。
+2. **定稿选取**：从候选中定稿 10–15 条（不足 10 条只告警并按实际输出；条数下限与上限以 spec 为准）；有权批量剔除，剔除数精确记入 `stats.dropped_by_organize`，并在 `gaps` 按批次说明理由。已被分析阶段剔除的条目不复活、不新增候选。
 3. **润色成稿**：逐条写 `core`（长度上限见 spec，不计英文单词与数字）与 `why`（一句评价，附建议）；事实数据（star、日期、链接、标签、repeat）照抄，不改写、不编造。
 4. **排序与概览**：按 `stars_today` 降序给连续 `rank`；写 `overview.lead`（今日一句总述）与 `overview.themes`（把当日自由标签合并为概览分组，每组一句要点；概览口径见 spec『实现决策 · 概览口径』）。
 5. **自检落盘**：对照「输出契约」自检，覆盖写入 `work/YYYY-MM-DD/organize.json`；按模板回复。
@@ -34,11 +34,11 @@ allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/spec.md), Read(wor
 产物 `work/YYYY-MM-DD/organize.json`（UTF-8），字段以 spec「organize.json」节与 `schemas/organize.schema.json` 为准，其中：
 
 - `date` 为委派日期。
-- `github`：analyze 全部字段 + `rank`；`rank` 连续、与 `stars_today` 降序一致；条目数符合 spec 区间。
+- `github`：analyze 全部字段 + `rank`；`rank` 连续、与 `stars_today` 降序一致；定稿 10–15 条（不足 10 条只告警并按实际输出，区间以 spec 为准）。
 - `core` 遵守 spec 的字数上限；`why` 为一句话评价与建议。
 - `overview`：`lead` 一句 + `themes[]`（`{name, note}`，只含当日命中的分组，口径见 spec『实现决策 · 概览口径』；`name` 可为标签或合并后的组名）。
 - `stats`：`{ github_count, dropped_recent_duplicates, dropped_by_organize }`；`github_count` 等于条数，`dropped_recent_duplicates` 沿用 analyze.json。
-- `gaps`：记录整理阶段的剔除理由与素材问题。
+- `gaps`：按批次记录整理阶段的剔除理由，并记录素材问题。
 
 写文件前自检：JSON 可解析；字段不越界；未写 `work/` 之外任何路径。
 
@@ -52,7 +52,7 @@ allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/spec.md), Read(wor
 
 - analyze.json 缺失或不可解析：立即失败，不自行分析或抓取。
 - 打回清单中的条目在 analyze.json 中不存在：按失败返回，不自行替换。
-- 候选不足以达到 spec 区间下限：按实际条数定稿，并在 `gaps` 说明。
+- 候选不足以达到下限（不足 10 条）：只告警并按实际条数定稿，在 `gaps` 说明。
 - 写入失败：按失败模板返回。
 - 同日文件已存在：直接覆盖（覆盖确认由主代理在委派前完成）。
 
