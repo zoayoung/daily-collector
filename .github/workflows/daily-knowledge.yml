@@ -111,14 +111,6 @@ jobs:
           npm install -g @opencode/cli@2.0.26 --no-fund --no-audit
           opencode --version
 
-      - name: 模型自检
-        shell: bash
-        env:
-          OC_GO_API_KEY: ${{ secrets.OC_GO_API_KEY }}
-        run: |
-          : "${OC_GO_API_KEY:?OC_GO_API_KEY is required}"
-          opencode models | grep -q 'oc-go/deepseek-v4.1-flash'
-
       - name: 无头运行知识采集
         shell: bash
         env:
