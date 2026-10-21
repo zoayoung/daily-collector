@@ -1,7 +1,7 @@
 ---
 name: knowledge-organize
 description: 知识采集系统「整理」阶段的流程技能。主代理委派 knowledge-organize 子代理执行日报定稿时加载（analyze.json 已存在）：从分析结果中定稿当日入选条目，润色 core 与 why、写 rank 与 overview，产出 work/YYYY-MM-DD/organize.json。不写日报、不抓取网页、不自行回改评分。
-allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/topics.md), Read(.scratch/knowledge-daily/spec.md), Read(work/**), Write(work/**), Edit(work/**), TodoWrite
+allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/topics.md), Read(.scratch/knowledge-daily/spec.md), Read(work/**), Read(daily-knowledge/**), Write(work/**), Edit(work/**), TodoWrite
 ---
 
 # 知识整理技能（整理阶段）
@@ -63,5 +63,5 @@ allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/topics.md), Read(.
 
 ## 权限边界
 
-- 允许：读 `AGENTS.md`、topics.md、spec、`work/`；写仅 `work/**` 内的 organize.json；TodoWrite。
-- 硬边界：不写 `output/`、不写 `analyze.json`、不增删候选或改主题标签、不抓取网页、不自行响应评分卡、不询问用户。
+- 允许：读 `AGENTS.md`、topics.md、spec、`work/`、`daily-knowledge/`；写仅 `work/**` 内的 organize.json；TodoWrite。
+- 硬边界：不写 `daily-knowledge/`、不写 `analyze.json`、不增删候选或改主题标签、不抓取网页、不自行响应评分卡、不询问用户。

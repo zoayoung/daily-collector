@@ -1,6 +1,6 @@
 """测试支撑：fixture 回放服务器、隔离的 CLI 运行器。
 
-测试只通过 CLI 与产物文件观察行为；work/output 用环境变量指向临时目录，
+测试只通过 CLI 与产物文件观察行为；work/daily-knowledge 用环境变量指向临时目录，
 GitHub API 用本地服务器回放 tests/fixtures/ 下的真实返回。
 """
 

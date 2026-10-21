@@ -19,7 +19,7 @@ class CollectCliTest(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.work = Path(self._tmp.name) / "work"
-        self.output = Path(self._tmp.name) / "output"
+        self.output = Path(self._tmp.name) / "daily-knowledge"
 
     def collect(self, server: FixtureServer) -> dict:
         result = run_cli(

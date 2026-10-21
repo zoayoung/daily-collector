@@ -18,7 +18,7 @@ class ValidateAllTest(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.work = Path(self._tmp.name) / "work"
-        self.output = Path(self._tmp.name) / "output"
+        self.output = Path(self._tmp.name) / "daily-knowledge"
 
     def test_all_uses_latest_date_that_has_stage_artifacts(self) -> None:
         with FixtureServer() as server:

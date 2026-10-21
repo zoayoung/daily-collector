@@ -17,8 +17,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _common import (
+    DAILY_KNOWLEDGE_DIR,
     DATE_RE,
-    OUTPUT_DIR,
     SCHEMA_DIR,
     WORK_DIR,
     cjk_count,
@@ -84,9 +84,9 @@ def _unknown(value, allowed: set[str], where: str, errors: list[str]) -> None:
 
 
 def _history_dates() -> set[str]:
-    if not OUTPUT_DIR.exists():
+    if not DAILY_KNOWLEDGE_DIR.exists():
         return set()
-    return {path.stem for path in OUTPUT_DIR.glob("*.md") if DATE_RE.match(path.stem)}
+    return {path.stem for path in DAILY_KNOWLEDGE_DIR.glob("*.md") if DATE_RE.match(path.stem)}
 
 
 def _topic_names() -> set[str]:
@@ -103,7 +103,7 @@ def _check_repeat(item: dict, day: str, history: set[str], where: str, errors: l
         return
     last_seen = repeat.get("last_seen")
     if last_seen not in history:
-        errors.append(f"{where} repeat.last_seen={last_seen} 在 output/ 历史中不存在")
+        errors.append(f"{where} repeat.last_seen={last_seen} 在 daily-knowledge/ 历史中不存在")
         return
     if (
         is_date(last_seen)

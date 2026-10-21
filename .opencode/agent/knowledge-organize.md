@@ -13,6 +13,8 @@ permission:
     ".scratch/knowledge-daily/spec.md": allow
     "work": allow
     "work/**": allow
+    "daily-knowledge": allow
+    "daily-knowledge/**": allow
   edit:
     "*": deny
     "work/**": allow
