@@ -166,7 +166,7 @@
 - 渲染：主代理按固定模板机械填充 `organize.json`，文字与数字照抄、不改写；模板见「编排协议 · 渲染模板」。标题下放质量评分摘要，每条放 star 与评分；30 天外重复只输出「🔁 重复：上次 YYYY-MM-DD」，不再输出「新进展」。
 - 校验：`schemas/*.schema.json` 是字段唯一来源（spec 只解释语义），`scripts/validate.py` 用 jsonschema + 跨文件语义检查；语义阈值见 `config/validation-rules.json`（`dedupe_window_days`、`collect_min_items`、`report_min_items`、`report_max_items`、`core_max_cjk`）。默认校验当日 `work/` 产物，`--all` 校验最近一个含阶段产物的 work 日期目录（跳过只有 tokens.json 的目录），`--file` 可单独校验。
 - 30 天硬校验：`validate.py` 对 analyze/organize 中的每条按 `full_name` 查窗口内历史；命中即报错，不论 `repeat` 或新进展。30 天外出现的项目必须带 `repeat.last_seen`，且 `last_seen` 等于最近一次发布日期。
-- 统计透传：`collect.stats.dropped_recent_duplicates` 存在时，analyze 与 organize 的同名字段必须与上游一致；旧 collect 无 `stats` 时跳过这项检查。
+- 统计透传：`collect.stats.dropped_recent_duplicates` 存在时，analyze 与 organize 的同名字段必须与上游一致；旧 collect 无 `stats` 时按 0 处理。
 - 术语口径：**候选集**是搜索去重后的全部项目，**入榜集**是 `collect.json` 的 50 条，**定稿集**是 `organize.json` 的 10–15 条；三者不再混用「采集」一词。重复窗口指上述滚动 30 天。
 - 校验重试：任一阶段校验失败 → 主代理把错误清单回传给同一子代理（脚本则重跑脚本），最多 3 次尝试；第 3 次仍失败即终止任务，保留产物供诊断。
 - 质量评分：`.opencode/plugins/quality-score.js` 在**子代理会话**的 `write`/`edit` 命中 `organize.json` 后调用 `scripts/score.py`（Python，确定性启发式），写 `work/YYYY-MM-DD/score.json` 并把评分卡追加到工具结果尾部。opencode 插件入口须为 JS，打分逻辑全部在 Python；等级阈值、维度权重、长度档位与词表见 `config/score-rules.json`；标签维度只按标签个数计分，不依赖固定主题表。

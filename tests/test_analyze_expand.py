@@ -51,11 +51,11 @@ def analyze_document(items: list[dict], dropped: int | None = 0) -> dict:
     return {"date": DAY, "github": items, "stats": stats, "gaps": []}
 
 
-def collect_document(stats: dict | None) -> dict:
+def collect_document(stats: dict | None, names: tuple[str, ...] = ("owner/repo",)) -> dict:
     document = {
         "date": DAY,
         "collected_at": f"{DAY} 08:00",
-        "github": [repo("owner/repo", 30)],
+        "github": [repo(name, 30) for name in names],
         "gaps": [],
     }
     if stats is not None:
@@ -135,11 +135,44 @@ class AnalyzeValidateTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
 
+    def test_analyze_must_cover_every_collect_item_ignoring_case(self) -> None:
+        self.write(
+            "collect.json",
+            collect_document(None, ("Owner/Alpha", "owner/beta")),
+        )
+        items = [analyzed("owner/alpha", 50), analyzed("Owner/Beta", 40)]
+
+        result = self.validate(self.write("analyze.json", analyze_document(items)))
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_analyze_missing_collect_item_is_rejected(self) -> None:
+        self.write(
+            "collect.json",
+            collect_document(None, ("owner/alpha", "owner/beta")),
+        )
+        items = [analyzed("owner/alpha", 50)]
+
+        result = self.validate(self.write("analyze.json", analyze_document(items)))
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("owner/beta", result.stdout)
+
+    def test_analyze_extra_item_not_in_collect_is_rejected(self) -> None:
+        self.write("collect.json", collect_document(None, ("owner/alpha",)))
+        items = [analyzed("owner/alpha", 50), analyzed("owner/extra", 40)]
+
+        result = self.validate(self.write("analyze.json", analyze_document(items)))
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("owner/extra", result.stdout)
+
     def test_stats_dropped_recent_duplicates_must_match_collect(self) -> None:
         self.write(
             "collect.json",
             collect_document(
-                {"candidates": 5, "eligible": 4, "dropped_recent_duplicates": 1}
+                {"candidates": 5, "eligible": 4, "dropped_recent_duplicates": 1},
+                ("owner/fresh",),
             ),
         )
         item = analyzed("owner/fresh")
@@ -157,7 +190,7 @@ class AnalyzeValidateTest(unittest.TestCase):
         self.assertIn("dropped_recent_duplicates", mismatch.stdout)
 
     def test_old_collect_without_stats_treats_dropped_as_zero(self) -> None:
-        self.write("collect.json", collect_document(None))
+        self.write("collect.json", collect_document(None, ("owner/fresh",)))
         item = analyzed("owner/fresh")
 
         accepted = self.validate(

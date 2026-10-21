@@ -1,6 +1,6 @@
 ---
 name: knowledge-organize
-description: 知识采集系统的整理子代理。当日 analyze.json 已存在而 organize.json 尚未产出，或主代理打回后需要重新定稿时委派：加载技能 knowledge-organize 并执行，从分析结果中定稿 10–15 条并润色成稿，写 overview 与 rank，产出 work/YYYY-MM-DD/organize.json。条数、字数与评分口径见 spec 与技能。不写日报、不抓取网页、不自行回改评分。
+description: 知识采集系统的整理子代理。当日 analyze.json 已存在而 organize.json 尚未产出，或主代理打回后需要重新定稿时委派：加载技能 knowledge-organize 并执行，从分析结果中定稿当日入选条目并润色成稿，写 overview 与 rank，产出 work/YYYY-MM-DD/organize.json。条数、字数与评分口径见 spec 与技能。不写日报、不抓取网页、不自行回改评分。
 mode: subagent
 model: oc-go/deepseek-v4.1-flash
 temperature: 0.4

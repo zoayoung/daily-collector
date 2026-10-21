@@ -56,15 +56,19 @@ class FixtureServer:
 
     search_pages 可按 (star 区间, 页码) 覆盖搜索响应；值可以是条目列表、
     完整响应 dict 或原始字节。未覆盖的请求回放 search_repositories.json。
+
+    search_failures 按 (star 区间, 页码) 指定要返回的 HTTP 状态码，用于模拟单区间失败。
     """
 
     def __init__(
         self,
         break_first_search: bool = False,
         search_pages: dict[tuple[str, int], object] | None = None,
+        search_failures: dict[tuple[str, int], int] | None = None,
     ) -> None:
         self.break_first_search = break_first_search
         self.search_pages = search_pages or {}
+        self.search_failures = search_failures or {}
         self.requests: list[str] = []
         self._search_requests = 0
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
@@ -91,6 +95,12 @@ class FixtureServer:
                 outer.requests.append(self.path)
                 if self.path.startswith("/search/repositories"):
                     outer._search_requests += 1
+                    status = outer.search_failures.get(search_request(self.path))
+                    if status is not None:
+                        self.send_response(status)
+                        self.send_header("Content-Length", "0")
+                        self.end_headers()
+                        return
                     body = outer._search_body(self.path)
                     broken = outer.break_first_search and outer._search_requests == 1
                 elif "/stargazers/history" in self.path:
@@ -123,6 +133,61 @@ class FixtureServer:
     def __exit__(self, *exc) -> None:
         self._server.shutdown()
         self._server.server_close()
+
+
+def render_report(organized: dict, score: dict | None = None) -> str:
+    """按 spec「渲染模板」机械填充；只做排版，不改写文字与数字。"""
+    lines = [f"# 知识日报 · {organized['date']}", ""]
+    summary = (score or {}).get("summary") if score and score.get("valid") else None
+    if summary and summary.get("average") is not None and summary.get("grades"):
+        grades = summary["grades"]
+        lines.extend(
+            [
+                (
+                    f"> 质量评分：均分 {summary['average']} · "
+                    f"A {grades.get('A', 0)} / B {grades.get('B', 0)} / C {grades.get('C', 0)}"
+                ),
+                "",
+            ]
+        )
+
+    overview = organized["overview"]
+    lines.extend(["## 今日概览", "", overview["lead"], ""])
+    for theme in overview["themes"]:
+        lines.append(f"- **{theme['name']}**：{theme['note']}")
+    lines.extend(["", "## GitHub 趋势", ""])
+
+    scores = {}
+    if summary:
+        scores = {
+            (item["rank"], item["full_name"]): item
+            for item in (score or {}).get("items", [])
+        }
+    for item in organized["github"]:
+        tags = " ".join(f"[{tag}]" for tag in item["themes"] or ["其他"])
+        star_line = f"- Star：{item['stars_total']:,}（今日 +{item['stars_today']}）"
+        matched = scores.get((item["rank"], item["full_name"]))
+        if matched:
+            star_line += f" · 评分：{matched['total']} / {matched['grade']}"
+        lines.extend(
+            [
+                f"### {item['rank']}. {item['full_name']}",
+                "",
+                f"- 标签：{tags}",
+                star_line,
+            ]
+        )
+        if item.get("repeat"):
+            lines.append(f"- 🔁 重复：上次 {item['repeat']['last_seen']}")
+        lines.extend(
+            [
+                f"- 链接：{item['url']}",
+                f"- 核心内容：{item['core']}",
+                f"- 为什么值得关注：{item['why']}",
+                "",
+            ]
+        )
+    return "\n".join(lines)
 
 
 def run_cli(

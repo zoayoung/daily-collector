@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.support import run_cli
+from tests.support import render_report, run_cli
 
 DAY = "2026-10-22"
 HISTORY_DAY = "2026-08-31"
@@ -68,35 +68,6 @@ def organize_document(
 
 def analyzed_items(count: int) -> list[dict]:
     return [repo(f"owner/repo{index:02d}", 100 - index) for index in range(count)]
-
-
-def render_report(document: dict) -> str:
-    """按 spec 渲染模板机械生成日报文本（测试内样例，不新增生产脚本）。"""
-    lines = [f"# 知识日报 · {document['date']}", "", "## 今日概览", ""]
-    lines.extend([document["overview"]["lead"], ""])
-    for theme in document["overview"]["themes"]:
-        lines.append(f"- **{theme['name']}**：{theme['note']}")
-    lines.extend(["", "## GitHub 趋势", ""])
-    for item in document["github"]:
-        lines.extend(
-            [
-                f"### {item['rank']}. {item['full_name']}",
-                "",
-                "- 标签：" + " ".join(f"[{tag}]" for tag in item["themes"] or ["其他"]),
-                f"- Star：{item['stars_total']}（今日 +{item['stars_today']}）",
-            ]
-        )
-        if item.get("repeat"):
-            lines.append(f"- 🔁 重复：上次 {item['repeat']['last_seen']}")
-        lines.extend(
-            [
-                f"- 链接：{item['url']}",
-                f"- 核心内容：{item['core']}",
-                f"- 为什么值得关注：{item['why']}",
-                "",
-            ]
-        )
-    return "\n".join(lines)
 
 
 class OrganizeFinalizeTest(unittest.TestCase):

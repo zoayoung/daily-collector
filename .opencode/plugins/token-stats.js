@@ -6,6 +6,13 @@ const OFFSET_MS = 8 * 60 * 60 * 1000
 const AGENT_ORDER = ["build", "knowledge-analyze", "knowledge-organize"]
 const BUCKET_KEYS = ["messages", "input", "output", "cache_read", "cache_write", "reasoning", "cost"]
 const MAX_SESSION_DEPTH = 10
+let tempSequence = 0
+
+function tempPath(file) {
+  tempSequence += 1
+  const suffix = Math.random().toString(36).slice(2, 8)
+  return `${file}.${process.pid}.${tempSequence}.${suffix}.tmp`
+}
 
 function localDate(timestamp) {
   return new Date(timestamp + OFFSET_MS).toISOString().slice(0, 10)
@@ -88,7 +95,7 @@ function renderReport(date, runs) {
 async function writeReport(root, date, runs) {
   if (!Array.isArray(runs) || runs.length === 0) return
   const file = path.join(root, "daily-knowledge", "tokens", `${date}.md`)
-  const temp = `${file}.${process.pid}.tmp`
+  const temp = tempPath(file)
   await fs.mkdir(path.dirname(file), { recursive: true })
   await fs.writeFile(temp, renderReport(date, runs), "utf8")
   await fs.rename(temp, file)
@@ -250,11 +257,23 @@ export default Plugin.define({
       existing.runs.sort((a, b) => String(a.started_at).localeCompare(String(b.started_at)))
 
       await fs.mkdir(path.dirname(file), { recursive: true })
-      const temp = `${file}.${process.pid}.tmp`
+      const temp = tempPath(file)
       await fs.writeFile(temp, `${JSON.stringify(existing, null, 2)}\n`, "utf8")
       await fs.rename(temp, file)
 
-      await writeReport(root, day, existing.runs)
+      try {
+        await writeReport(root, day, existing.runs)
+      } catch {
+        // tokens.json 已落盘，md 失败不阻断后续事件
+      }
+    }
+
+    async function safeFlush() {
+      try {
+        await flush()
+      } catch {
+        // 单次落盘失败不影响事件订阅，下一次事件会再次尝试
+      }
     }
 
     void (async () => {
@@ -266,16 +285,16 @@ export default Plugin.define({
         } else if (event.type === "session.usage.updated") {
           trackUsage(event.data)
         } else if (event.type === "session.execution.succeeded") {
-          await flush()
+          await safeFlush()
         } else if (event.type === "session.idle") {
-          await flush()
+          await safeFlush()
         }
       }
     })().catch(() => {})
 
     return async () => {
       controller.abort()
-      await flush().catch(() => {})
+      await safeFlush()
     }
   },
 })

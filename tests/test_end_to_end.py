@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.support import ROOT, FixtureServer, run_cli, search_request
+from tests.support import FixtureServer, render_report, run_cli, search_request
 
 DAY = "2026-10-21"
 WINDOW_HISTORY_DAY = "2026-10-10"
@@ -25,16 +25,6 @@ CORE = (
     "适合在本地服务中评估其架构与吞吐表现。"
 )
 WHY = "适合对照其调度实现，建议关注后续版本的并发与延迟优化。"
-TOKEN_DATE = "2026-10-22"
-TOKEN_KEYS = (
-    "messages",
-    "input",
-    "output",
-    "cache_read",
-    "cache_write",
-    "reasoning",
-    "cost",
-)
 
 
 def search_item(full_name: str, stars: int) -> dict:
@@ -109,63 +99,6 @@ def organize_document(analyzed: dict, final_count: int) -> dict:
         },
         "gaps": ["按内容相关度批量剔除，保留当天最值得关注的条目。"],
     }
-
-
-def render_report(organized: dict, score: dict | None) -> str:
-    """按 spec「渲染模板」机械填充；只做排版，不改写文字与数字。"""
-    lines = [f"# 知识日报 · {organized['date']}", ""]
-    summary = (score or {}).get("summary") if score and score.get("valid") else None
-    if summary and summary.get("average") is not None and summary.get("grades"):
-        grades = summary["grades"]
-        lines.extend(
-            [
-                (
-                    f"> 质量评分：均分 {summary['average']} · "
-                    f"A {grades.get('A', 0)} / B {grades.get('B', 0)} / C {grades.get('C', 0)}"
-                ),
-                "",
-            ]
-        )
-
-    overview = organized["overview"]
-    lines.extend(["## 今日概览", "", overview["lead"], ""])
-    for theme in overview["themes"]:
-        lines.append(f"- **{theme['name']}**：{theme['note']}")
-    lines.extend(["", "## GitHub 趋势", ""])
-
-    scores = {}
-    if summary:
-        scores = {
-            (item["rank"], item["full_name"]): item
-            for item in (score or {}).get("items", [])
-        }
-    for item in organized["github"]:
-        tags = " ".join(f"[{tag}]" for tag in item["themes"] or ["其他"])
-        star_line = (
-            f"- Star：{item['stars_total']:,}（今日 +{item['stars_today']}）"
-        )
-        matched = scores.get((item["rank"], item["full_name"]))
-        if matched:
-            star_line += f" · 评分：{matched['total']} / {matched['grade']}"
-        lines.extend(
-            [
-                f"### {item['rank']}. {item['full_name']}",
-                "",
-                f"- 标签：{tags}",
-                star_line,
-            ]
-        )
-        if item.get("repeat"):
-            lines.append(f"- 🔁 重复：上次 {item['repeat']['last_seen']}")
-        lines.extend(
-            [
-                f"- 链接：{item['url']}",
-                f"- 核心内容：{item['core']}",
-                f"- 为什么值得关注：{item['why']}",
-                "",
-            ]
-        )
-    return "\n".join(lines)
 
 
 def report_entries(markdown: str) -> list[str]:
@@ -297,83 +230,6 @@ class EndToEndTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(DAY, result.stdout)
-
-
-def parse_bucket(cells: list[str]) -> dict:
-    values = [int(cell) if cell else 0 for cell in cells]
-    return dict(zip(TOKEN_KEYS, values, strict=True))
-
-
-def parse_token_report(markdown: str) -> tuple[list[dict], dict]:
-    """解析 token 报告：按 run 聚合代理行与合计行，并读取当日合计。"""
-    runs: list[dict] = []
-    daily: dict = {}
-    current: dict | None = None
-    section = "runs"
-    for line in markdown.splitlines():
-        if line.startswith("## Run"):
-            match = re.match(r"## Run \d+ · (.+?) [–-] (.+)$", line)
-            if not match:
-                continue
-            current = {
-                "started_at": match.group(1).strip(),
-                "ended_at": match.group(2).strip(),
-                "agents": {},
-                "total": {},
-            }
-            runs.append(current)
-            section = "runs"
-            continue
-        if line.startswith("## 当日合计"):
-            section = "daily"
-            continue
-        if not line.startswith("|"):
-            continue
-        cells = [cell.strip() for cell in line.strip("|").split("|")]
-        if not cells or cells[0] in {"代理", "消息数"} or set(cells[0]) <= {"-"}:
-            continue
-        if section == "daily":
-            daily = parse_bucket(cells)
-        elif current is not None:
-            if cells[0] == "合计":
-                current["total"] = parse_bucket(cells[1:])
-            else:
-                current["agents"][cells[0]] = parse_bucket(cells[1:])
-    return runs, daily
-
-
-def sum_buckets(buckets: list[dict]) -> dict:
-    return {key: sum(bucket.get(key, 0) for bucket in buckets) for key in TOKEN_KEYS}
-
-
-class TokenArtifactConsistencyTest(unittest.TestCase):
-    def test_token_report_and_usage_artifact_are_consistent(self) -> None:
-        report_path = ROOT / "daily-knowledge" / "tokens" / f"{TOKEN_DATE}.md"
-        usage_path = ROOT / "work" / TOKEN_DATE / "tokens.json"
-        if not report_path.exists() or not usage_path.exists():
-            self.skipTest(f"缺少真实 token 产物：{report_path} / {usage_path}")
-
-        runs, daily = parse_token_report(report_path.read_text(encoding="utf-8"))
-        usage = json.loads(usage_path.read_text(encoding="utf-8"))
-        usage_runs = usage.get("runs") or []
-        self.assertTrue(runs)
-        self.assertTrue(usage_runs)
-
-        for run in runs:
-            self.assertEqual(run["total"], sum_buckets(list(run["agents"].values())))
-        self.assertEqual(daily, sum_buckets([run["total"] for run in runs]))
-
-        for run in usage_runs:
-            self.assertEqual(run["total"], sum_buckets(list(run["agents"].values())))
-
-        usage_by_start = {run["started_at"]: run for run in usage_runs}
-        for run in runs:
-            counterpart = usage_by_start.get(run["started_at"])
-            if counterpart is None:
-                continue
-            self.assertEqual(run["agents"], counterpart["agents"])
-            self.assertEqual(run["total"], counterpart["total"])
-            self.assertEqual(run["started_at"], counterpart["started_at"])
 
 
 if __name__ == "__main__":

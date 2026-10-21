@@ -100,24 +100,33 @@ def cjk_count(text: str | None) -> int:
     return len(CJK_RE.findall(text or ""))
 
 
-def dedupe_window_days() -> int:
-    """重复窗口天数；唯一来源是 config/validation-rules.json。"""
+VALIDATION_RULE_KEYS = (
+    "dedupe_window_days",
+    "collect_min_items",
+    "report_min_items",
+    "report_max_items",
+    "core_max_cjk",
+)
+
+
+def load_validation_rules() -> dict:
+    """读取语义阈值配置；缺失或缺键时给出可定位的失败信息。"""
     path = CONFIG_DIR / "validation-rules.json"
     try:
-        value = read_json(path).get("dedupe_window_days")
+        rules = read_json(path)
+    except FileNotFoundError as error:
+        raise SystemExit(f"❌ 校验失败：找不到校验规则 {path.as_posix()}") from error
     except (OSError, ValueError) as error:
-        raise RuntimeError(f"无法读取重复窗口配置 {path.as_posix()}：{error}") from error
-    if not isinstance(value, int) or value < 1:
-        raise RuntimeError(f"重复窗口配置非法：{path.as_posix()} 的 dedupe_window_days={value!r}")
-    return value
+        raise SystemExit(f"❌ 校验失败：无法读取校验规则 {path.as_posix()}：{error}") from error
+    missing = [key for key in VALIDATION_RULE_KEYS if key not in rules]
+    if missing:
+        raise SystemExit(f"❌ 校验失败：{path.as_posix()} 缺少 {', '.join(missing)}")
+    return rules
 
 
-def window_bounds(day: str, window_days: int) -> tuple[str, str]:
-    """重复窗口 [day-window_days, day-1]，不含 day。"""
-    current = date.fromisoformat(day)
-    start = current - timedelta(days=window_days)
-    end = current - timedelta(days=1)
-    return start.isoformat(), end.isoformat()
+def window_start(day: str, window_days: int) -> str:
+    """重复窗口的起始日：day 之前第 window_days 天（含当天）。"""
+    return (date.fromisoformat(day) - timedelta(days=window_days)).isoformat()
 
 
 def published_history(day: str) -> dict[str, list[str]]:
@@ -143,10 +152,9 @@ def published_history(day: str) -> dict[str, list[str]]:
     return history
 
 
-def recent_duplicates(day: str, window_days: int | None = None) -> set[str]:
+def recent_duplicates(day: str, window_days: int) -> set[str]:
     """重复窗口内出现过的项目（小写 full_name），用于采集过滤。"""
-    days = dedupe_window_days() if window_days is None else window_days
-    start, _ = window_bounds(day, days)
+    start = window_start(day, window_days)
     return {
         name
         for name, dates in published_history(day).items()

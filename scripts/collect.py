@@ -23,8 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _common import (
     WORK_DIR,
-    dedupe_window_days,
     is_date,
+    load_validation_rules,
     read_json,
     recent_duplicates,
     stamp,
@@ -38,7 +38,6 @@ MAX_PAGES = 2
 PER_PAGE = 100
 MAX_HISTORY_CALLS = 100
 PICK_LIMIT = 50
-MIN_ENTRIES = 10
 
 
 def token() -> str | None:
@@ -102,7 +101,7 @@ def load_baselines(day: str) -> dict[str, tuple[str, int]]:
     return baselines
 
 
-def search_candidates(day: str) -> list[dict]:
+def search_candidates(day: str, gaps: list[str]) -> list[dict]:
     cutoff = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
     collected: list[dict] = []
     for star_range in STAR_RANGES:
@@ -117,7 +116,11 @@ def search_candidates(day: str) -> list[dict]:
                     "page": page,
                 }
             )
-            payload = get_json(f"{API}/search/repositories?{params}")
+            try:
+                payload = get_json(f"{API}/search/repositories?{params}")
+            except RuntimeError as error:
+                gaps.append(f"搜索区间 {star_range} 第 {page} 页失败：{error}")
+                break
             items = payload.get("items", [])
             for item in items:
                 collected.append(
@@ -172,18 +175,20 @@ def star_history(full_name: str, day: str) -> int | None:
 
 def build(day: str) -> dict:
     gaps: list[str] = []
+    rules = load_validation_rules()
+    window_days = rules["dedupe_window_days"]
     baselines = load_baselines(day)
     yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
 
-    candidates = search_candidates(day)
+    candidates = search_candidates(day, gaps)
     if not candidates:
         raise RuntimeError("搜索 API 未返回任何候选")
 
-    recent = recent_duplicates(day, dedupe_window_days())
+    recent = recent_duplicates(day, window_days)
     eligible = [repo for repo in candidates if repo["full_name"].lower() not in recent]
     dropped_recent_duplicates = len(candidates) - len(eligible)
     if not eligible:
-        raise RuntimeError("按 30 天重复窗口过滤后没有任何候选")
+        raise RuntimeError(f"按 {window_days} 天重复窗口过滤后没有任何候选")
     stats = {
         "candidates": len(candidates),
         "eligible": len(eligible),
@@ -234,15 +239,16 @@ def build(day: str) -> dict:
 
     gaps.insert(
         0,
-        f"候选 {len(candidates)} 个，30 天窗口剔除 {dropped_recent_duplicates} 个，入榜 {len(picked)} 个",
+        f"候选 {len(candidates)} 个，{window_days} 天窗口剔除 {dropped_recent_duplicates} 个，入榜 {len(picked)} 个",
     )
     gaps.append(
         f"star_history 调用 {history_calls} 次（上限 {MAX_HISTORY_CALLS}），失败 {history_failed} 次"
     )
     if len(ranked) > len(picked):
         gaps.append(f"未纳入 {len(ranked) - len(picked)} 个有增量的候选（排名在 {PICK_LIMIT} 之后）")
-    if len(picked) < MIN_ENTRIES:
-        gaps.append(f"入榜不足 {MIN_ENTRIES} 条（实际 {len(picked)} 条）")
+    min_items = rules["collect_min_items"]
+    if len(picked) < min_items:
+        gaps.append(f"入榜不足 {min_items} 条（实际 {len(picked)} 条）")
     if missing:
         gaps.append(f"字段缺失：{', '.join(missing)}")
 
