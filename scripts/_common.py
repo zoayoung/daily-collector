@@ -7,7 +7,7 @@ import os
 import re
 import sys
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 for _stream in (sys.stdout, sys.stderr):
@@ -24,6 +24,7 @@ SPEC = ROOT / ".scratch" / "knowledge-daily" / "spec.md"
 TIMEZONE = timezone(timedelta(hours=8))
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+HEADING_RE = re.compile(r"^###\s+\d+\.\s+(\S+/\S+)\s*$")
 
 
 def _load_env_file(path: Path) -> None:
@@ -97,3 +98,57 @@ def write_json(path: Path | str, data) -> Path:
 def cjk_count(text: str | None) -> int:
     """统计文本中的汉字数量（英文单词与数字不计）。"""
     return len(CJK_RE.findall(text or ""))
+
+
+def dedupe_window_days() -> int:
+    """重复窗口天数；唯一来源是 config/validation-rules.json。"""
+    path = CONFIG_DIR / "validation-rules.json"
+    try:
+        value = read_json(path).get("dedupe_window_days")
+    except (OSError, ValueError) as error:
+        raise RuntimeError(f"无法读取重复窗口配置 {path.as_posix()}：{error}") from error
+    if not isinstance(value, int) or value < 1:
+        raise RuntimeError(f"重复窗口配置非法：{path.as_posix()} 的 dedupe_window_days={value!r}")
+    return value
+
+
+def window_bounds(day: str, window_days: int) -> tuple[str, str]:
+    """重复窗口 [day-window_days, day-1]，不含 day。"""
+    current = date.fromisoformat(day)
+    start = current - timedelta(days=window_days)
+    end = current - timedelta(days=1)
+    return start.isoformat(), end.isoformat()
+
+
+def published_history(day: str) -> dict[str, list[str]]:
+    """已发布日报的项目历史：{小写 full_name: [发布日期升序]}，不含 day 及之后。"""
+    history: dict[str, list[str]] = {}
+    if not DAILY_KNOWLEDGE_DIR.exists():
+        return history
+    current = date.fromisoformat(day)
+    for path in sorted(DAILY_KNOWLEDGE_DIR.glob("*.md")):
+        stem = path.stem
+        if not is_date(stem) or date.fromisoformat(stem) >= current:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8-sig")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            match = HEADING_RE.match(line)
+            if match:
+                history.setdefault(match.group(1).lower(), []).append(stem)
+    for dates in history.values():
+        dates.sort()
+    return history
+
+
+def recent_duplicates(day: str, window_days: int | None = None) -> set[str]:
+    """重复窗口内出现过的项目（小写 full_name），用于采集过滤。"""
+    days = dedupe_window_days() if window_days is None else window_days
+    start, _ = window_bounds(day, days)
+    return {
+        name
+        for name, dates in published_history(day).items()
+        if dates and dates[-1] >= start
+    }

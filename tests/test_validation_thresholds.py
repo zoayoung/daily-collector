@@ -82,7 +82,9 @@ class ValidationThresholdTest(unittest.TestCase):
         self.assertNotIn("入榜不足", result.stdout)
 
     def analyze_document(self, last_seen: str, new_progress: str | None) -> dict:
-        (self.daily / f"{last_seen}.md").write_text("# 历史日报\n", encoding="utf-8")
+        (self.daily / f"{last_seen}.md").write_text(
+            "# 历史日报\n\n### 1. owner/repo\n", encoding="utf-8"
+        )
         item = repo("owner/repo")
         item.update(
             {
@@ -99,12 +101,13 @@ class ValidationThresholdTest(unittest.TestCase):
             "gaps": [],
         }
 
-    def test_new_progress_at_window_edge_is_accepted(self) -> None:
+    def test_new_progress_at_window_edge_is_rejected(self) -> None:
         document = self.analyze_document("2026-09-22", "发布了新版本")
 
         result = self.validate(self.write("analyze.json", document))
 
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("30 天窗口", result.stdout)
 
     def test_new_progress_beyond_window_is_rejected(self) -> None:
         document = self.analyze_document("2026-09-21", "发布了新版本")

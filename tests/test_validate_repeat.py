@@ -10,7 +10,7 @@ from pathlib import Path
 from tests.support import run_cli
 
 DAY = "2026-10-22"
-HISTORY_DAY = "2026-10-01"
+HISTORY_DAY = "2026-08-31"
 
 
 def analyze_document(last_seen: str, new_progress: str | None) -> dict:
@@ -46,7 +46,9 @@ class ValidateRepeatHistoryTest(unittest.TestCase):
         self.work = Path(self._tmp.name) / "work"
         self.daily = Path(self._tmp.name) / "daily-knowledge"
         self.daily.mkdir(parents=True)
-        (self.daily / f"{HISTORY_DAY}.md").write_text("# 历史日报\n", encoding="utf-8")
+        (self.daily / f"{HISTORY_DAY}.md").write_text(
+            "# 历史日报\n\n### 1. owner/repo\n", encoding="utf-8"
+        )
 
     def write_analyze(self, document: dict) -> Path:
         path = self.work / DAY / "analyze.json"
@@ -55,14 +57,14 @@ class ValidateRepeatHistoryTest(unittest.TestCase):
         return path
 
     def test_repeat_history_is_read_from_daily_knowledge(self) -> None:
-        self.write_analyze(analyze_document(HISTORY_DAY, "发布了新版本"))
+        self.write_analyze(analyze_document(HISTORY_DAY, None))
 
         result = run_cli("validate.py", "--date", DAY, work_dir=self.work, output_dir=self.daily)
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_missing_repeat_history_error_names_daily_knowledge(self) -> None:
-        self.write_analyze(analyze_document("2026-09-30", None))
+        self.write_analyze(analyze_document("2026-08-30", None))
 
         result = run_cli("validate.py", "--date", DAY, work_dir=self.work, output_dir=self.daily)
 

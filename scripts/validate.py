@@ -11,21 +11,20 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _common import (
     CONFIG_DIR,
-    DAILY_KNOWLEDGE_DIR,
-    DATE_RE,
     SCHEMA_DIR,
     WORK_DIR,
     cjk_count,
     is_date,
+    published_history,
     read_json,
     today,
+    window_bounds,
 )
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
@@ -100,37 +99,43 @@ def _unknown(value, allowed: set[str], where: str, errors: list[str]) -> None:
         errors.append(f"{where} 出现未知字段：{', '.join(extra)}")
 
 
-def _history_dates() -> set[str]:
-    if not DAILY_KNOWLEDGE_DIR.exists():
-        return set()
-    return {path.stem for path in DAILY_KNOWLEDGE_DIR.glob("*.md") if DATE_RE.match(path.stem)}
-
-
-def _days_between(earlier: str, later: str) -> int:
-    return (date.fromisoformat(later) - date.fromisoformat(earlier)).days
-
-
-def _check_repeat(
+def _check_duplicate_window(
     item: dict,
     day: str,
-    history: set[str],
+    history: dict[str, list[str]],
     window_days: int,
     where: str,
     errors: list[str],
 ) -> None:
+    """30 天窗口硬闸：窗口内零例外；窗口外 repeat 必须等于最近发布日期。"""
+    name = item.get("full_name") or ""
+    dates = history.get(name.lower(), [])
+    start, _ = window_bounds(day, window_days)
+    recent = [value for value in dates if value >= start]
+    if recent:
+        errors.append(
+            f"{where} {name} 在 30 天窗口内出现过（最近 {recent[-1]}），不得输出"
+        )
+        return
     repeat = item.get("repeat")
+    if not dates:
+        if repeat:
+            errors.append(
+                f"{where} repeat.last_seen={repeat.get('last_seen')} 在 daily-knowledge/ 历史中不存在"
+            )
+        return
+    latest = dates[-1]
     if not repeat:
+        errors.append(f"{where} 30 天外重复项目必须写 repeat.last_seen={latest}")
         return
     last_seen = repeat.get("last_seen")
-    if last_seen not in history:
+    if last_seen not in dates:
         errors.append(f"{where} repeat.last_seen={last_seen} 在 daily-knowledge/ 历史中不存在")
         return
-    if (
-        is_date(last_seen)
-        and is_date(day)
-        and _days_between(last_seen, day) > window_days
-        and repeat.get("new_progress")
-    ):
+    if last_seen != latest:
+        errors.append(f"{where} repeat.last_seen={last_seen} 应等于最近发布日期 {latest}")
+        return
+    if repeat.get("new_progress"):
         errors.append(f"{where} {window_days} 天外的条目不应写 new_progress")
 
 
@@ -164,14 +169,14 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
         errors.append(f"date={day} 与目录名 {path.parent.name} 不一致")
 
     items = data.get("github") or []
-    history = _history_dates()
+    history = published_history(day)
     names: list[str] = []
     for index, item in enumerate(items, start=1):
         where = f"github[{index}]"
         _unknown(item, item_keys, where, errors)
         names.append(item.get("full_name"))
         if stage != "collect":
-            _check_repeat(item, day, history, rules["dedupe_window_days"], where, errors)
+            _check_duplicate_window(item, day, history, rules["dedupe_window_days"], where, errors)
 
     duplicates = sorted({name for name in names if names.count(name) > 1})
     if duplicates:
