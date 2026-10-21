@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowledge-daily.local/analyze.schema.json",
+  "title": "analyze.json（分析子代理产物）",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["date", "github", "stats", "gaps"],
+  "properties": {
+    "date": { "$ref": "https://knowledge-daily.local/contracts.schema.json#/$defs/date" },
+    "github": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "https://knowledge-daily.local/contracts.schema.json#/$defs/analyzedRepo" }
+    },
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["github_count", "dropped_recent_duplicates"],
+      "properties": {
+        "github_count": { "type": "integer", "minimum": 0 },
+        "dropped_recent_duplicates": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "gaps": { "$ref": "https://knowledge-daily.local/contracts.schema.json#/$defs/gaps" }
+  }
+}
