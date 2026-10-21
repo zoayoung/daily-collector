@@ -1,7 +1,11 @@
+import { Plugin } from "@opencode/plugin"
 import fs from "node:fs/promises"
 import path from "node:path"
 
 const OFFSET_MS = 8 * 60 * 60 * 1000
+const AGENT_ORDER = ["build", "knowledge-analyze", "knowledge-organize"]
+const BUCKET_KEYS = ["messages", "input", "output", "cache_read", "cache_write", "reasoning", "cost"]
+const MAX_SESSION_DEPTH = 10
 
 function localDate(timestamp) {
   return new Date(timestamp + OFFSET_MS).toISOString().slice(0, 10)
@@ -27,21 +31,6 @@ function emptyBucket() {
     cost: 0,
   }
 }
-
-function addBucket(target, message) {
-  target.messages += 1
-  target.input += message.input
-  target.output += message.output
-  target.reasoning += message.reasoning
-  target.cache_read += message.cache_read
-  target.cache_write += message.cache_write
-  target.cost += message.cost
-}
-
-const AGENT_ORDER = ["build", "knowledge-analyze", "knowledge-organize"]
-const BUCKET_KEYS = ["messages", "input", "output", "cache_read", "cache_write", "reasoning", "cost"]
-// 子会话向上找根会话的最大层数，防止异常数据造成无限循环
-const MAX_SESSION_DEPTH = 10
 
 function orderedAgents(agents) {
   const rest = Object.keys(agents)
@@ -105,132 +94,168 @@ async function writeReport(root, date, runs) {
   await fs.rename(temp, file)
 }
 
-export const TokenStats = async ({ client, directory, worktree }) => {
-  const root = worktree || directory
-  const sessionRoot = new Map()
-  const messages = new Map()
-  let timer = null
-
-  async function resolveRoot(sessionID) {
-    if (!sessionID) return "unknown"
-    if (sessionRoot.has(sessionID)) return sessionRoot.get(sessionID)
-    sessionRoot.set(sessionID, sessionID)
-    let current = sessionID
-    for (let depth = 0; depth < MAX_SESSION_DEPTH; depth += 1) {
-      let parent
-      try {
-        const response = await client.session.get({ path: { id: current } })
-        parent = response?.data?.parentID ?? response?.parentID
-      } catch {
-        break
-      }
-      if (!parent) break
-      current = parent
-    }
-    sessionRoot.set(sessionID, current)
-    return current
-  }
-
-  // opencode 的消息信息在不同版本里用 mode 或 agent 表示代理名，按此顺序取第一个有值的
-  function agentName(info) {
-    return info.mode || info.agent || "unknown"
-  }
-
-  function record(info) {
-    if (!info || info.role !== "assistant" || info.time?.completed == null) return
-    const tokens = info.tokens || {}
-    messages.set(info.id, {
-      sessionID: info.sessionID,
-      agent: agentName(info),
-      created: info.time?.created ?? Date.now(),
-      input: tokens.input || 0,
-      output: tokens.output || 0,
-      reasoning: tokens.reasoning || 0,
-      cache_read: tokens.cache?.read || 0,
-      cache_write: tokens.cache?.write || 0,
-      cost: info.cost || 0,
-    })
-  }
-
-  function scheduleFlush() {
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => {
-      timer = null
-      flush().catch(() => {})
-    }, 400)
-  }
-
-  async function flush() {
-    if (messages.size === 0) return
-
-    const grouped = new Map()
-    for (const message of messages.values()) {
-      const rootSession = await resolveRoot(message.sessionID)
-      let run = grouped.get(rootSession)
-      if (!run) {
-        run = {
-          root_session: rootSession,
-          started_at: localStamp(message.created),
-          start_ms: message.created,
-          agents: {},
-          total: emptyBucket(),
-        }
-        grouped.set(rootSession, run)
-      }
-      run.start_ms = Math.min(run.start_ms, message.created)
-      run.started_at = localStamp(run.start_ms)
-      run.agents[message.agent] = run.agents[message.agent] || emptyBucket()
-      addBucket(run.agents[message.agent], message)
-      addBucket(run.total, message)
-    }
-
-    const day = localDate(Date.now())
-    const file = path.join(root, "work", day, "tokens.json")
-    let existing = { date: day, runs: [] }
-    try {
-      existing = JSON.parse(await fs.readFile(file, "utf8"))
-    } catch (error) {
-      // 文件不存在时正常新建；存在却读不出或解析失败时丢弃本轮统计，
-      // 不覆盖 tokens.json、不生成 md，避免破坏历史数据
-      if (error?.code !== "ENOENT") return
-    }
-    if (!existing || typeof existing !== "object") return
-    if (!Array.isArray(existing.runs)) existing.runs = []
-
-    for (const run of grouped.values()) {
-      delete run.start_ms
-      run.updated_at = localStamp(Date.now())
-      const index = existing.runs.findIndex((item) => item.root_session === run.root_session)
-      if (index === -1) existing.runs.push(run)
-      else existing.runs[index] = run
-    }
-
-    existing.date = day
-    existing.updated_at = localStamp(Date.now())
-    existing.runs.sort((a, b) => String(a.started_at).localeCompare(String(b.started_at)))
-
-    await fs.mkdir(path.dirname(file), { recursive: true })
-    const temp = `${file}.${process.pid}.tmp`
-    await fs.writeFile(temp, `${JSON.stringify(existing, null, 2)}\n`, "utf8")
-    await fs.rename(temp, file)
-
-    await writeReport(root, day, existing.runs)
-  }
-
+function tokenFields(tokens) {
   return {
-    event: async ({ event }) => {
-      if (event.type === "message.updated") {
-        record(event.properties?.info)
-        scheduleFlush()
-        return
-      }
-      if (event.type === "session.idle") {
-        await flush().catch(() => {})
-      }
-    },
-    dispose: async () => {
-      if (timer) clearTimeout(timer)
-      await flush().catch(() => {})
-    },
+    input: tokens?.input || 0,
+    output: tokens?.output || 0,
+    reasoning: tokens?.reasoning || 0,
+    cache_read: tokens?.cache?.read || 0,
+    cache_write: tokens?.cache?.write || 0,
   }
 }
+
+export default Plugin.define({
+  id: "knowledge-daily.token-stats",
+  async setup(ctx) {
+    const root = ctx.location?.directory || process.cwd()
+    const controller = new AbortController()
+    const sessions = new Map()
+    const steps = new Map()
+    const usage = new Map()
+    const resolvedRoots = new Map()
+
+    async function resolveRoot(sessionID) {
+      if (!sessionID) return "unknown"
+      if (resolvedRoots.has(sessionID)) return resolvedRoots.get(sessionID)
+      let current = sessionID
+      let parent = sessions.get(current)?.parentID
+      for (let depth = 0; depth < MAX_SESSION_DEPTH && !parent; depth += 1) {
+        try {
+          const session = await ctx.session.get({ sessionID: current })
+          parent = session?.parentID ?? session?.parent?.id
+        } catch {
+          break
+        }
+        if (!parent) break
+        current = parent
+      }
+      const rootSession = parent || current
+      resolvedRoots.set(sessionID, rootSession)
+      return rootSession
+    }
+
+    function trackSession(data, created) {
+      if (!data?.sessionID) return
+      const previous = sessions.get(data.sessionID) || {}
+      sessions.set(data.sessionID, {
+        ...previous,
+        agent: data.agent || previous.agent || "unknown",
+        parentID: data.parentID ?? previous.parentID,
+        created: previous.created ?? created ?? Date.now(),
+      })
+    }
+
+    function trackStep(data, created) {
+      if (!data?.sessionID) return
+      const set = steps.get(data.sessionID) || new Set()
+      if (data.assistantMessageID) set.add(data.assistantMessageID)
+      else set.add(`${data.sessionID}-${created ?? Date.now()}`)
+      steps.set(data.sessionID, set)
+      if (!sessions.has(data.sessionID)) {
+        sessions.set(data.sessionID, { agent: "unknown", created: created ?? Date.now() })
+      }
+    }
+
+    function trackUsage(data) {
+      if (!data?.sessionID) return
+      usage.set(data.sessionID, {
+        cost: data.cost || 0,
+        ...tokenFields(data.tokens),
+      })
+    }
+
+    async function flush() {
+      if (sessions.size === 0) return
+
+      const grouped = new Map()
+      for (const [sessionID, session] of sessions) {
+        const rootSession = await resolveRoot(sessionID)
+        let run = grouped.get(rootSession)
+        if (!run) {
+          run = {
+            root_session: rootSession,
+            started_at: localStamp(session.created),
+            start_ms: session.created,
+            agents: {},
+            total: emptyBucket(),
+          }
+          grouped.set(rootSession, run)
+        }
+        run.start_ms = Math.min(run.start_ms, session.created)
+        run.started_at = localStamp(run.start_ms)
+
+        const agent = session.agent || "unknown"
+        const bucket = run.agents[agent] || emptyBucket()
+        const counts = steps.get(sessionID)
+        bucket.messages += counts ? counts.size : 0
+        const totals = usage.get(sessionID)
+        if (totals) {
+          bucket.input += totals.input
+          bucket.output += totals.output
+          bucket.reasoning += totals.reasoning
+          bucket.cache_read += totals.cache_read
+          bucket.cache_write += totals.cache_write
+          bucket.cost += totals.cost
+        }
+        run.agents[agent] = bucket
+      }
+
+      for (const run of grouped.values()) {
+        run.total = emptyBucket()
+        for (const bucket of Object.values(run.agents)) {
+          for (const key of BUCKET_KEYS) run.total[key] += bucket[key]
+        }
+      }
+
+      const day = localDate(Date.now())
+      const file = path.join(root, "work", day, "tokens.json")
+      let existing = { date: day, runs: [] }
+      try {
+        existing = JSON.parse(await fs.readFile(file, "utf8"))
+        if (!Array.isArray(existing.runs)) existing.runs = []
+      } catch (error) {
+        if (error?.code !== "ENOENT") return
+      }
+
+      for (const run of grouped.values()) {
+        delete run.start_ms
+        run.updated_at = localStamp(Date.now())
+        const index = existing.runs.findIndex((item) => item.root_session === run.root_session)
+        if (index === -1) existing.runs.push(run)
+        else existing.runs[index] = run
+      }
+
+      existing.date = day
+      existing.updated_at = localStamp(Date.now())
+      existing.runs.sort((a, b) => String(a.started_at).localeCompare(String(b.started_at)))
+
+      await fs.mkdir(path.dirname(file), { recursive: true })
+      const temp = `${file}.${process.pid}.tmp`
+      await fs.writeFile(temp, `${JSON.stringify(existing, null, 2)}\n`, "utf8")
+      await fs.rename(temp, file)
+
+      await writeReport(root, day, existing.runs)
+    }
+
+    void (async () => {
+      for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+        if (event.type === "session.created") {
+          trackSession(event.data, event.created)
+        } else if (event.type === "session.step.ended") {
+          trackStep(event.data, event.created)
+        } else if (event.type === "session.usage.updated") {
+          trackUsage(event.data)
+        } else if (event.type === "session.execution.succeeded") {
+          await flush()
+        } else if (event.type === "session.idle") {
+          await flush()
+        }
+      }
+    })().catch(() => {})
+
+    return async () => {
+      controller.abort()
+      await flush().catch(() => {})
+    }
+  },
+})

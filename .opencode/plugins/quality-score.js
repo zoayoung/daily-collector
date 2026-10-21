@@ -1,3 +1,4 @@
+import { Plugin } from "@opencode/plugin"
 import { execFile } from "node:child_process"
 import path from "node:path"
 import { promisify } from "node:util"
@@ -6,17 +7,6 @@ const execFileAsync = promisify(execFile)
 
 const TARGET = /(^|[\\/])organize\.json$/i
 const WRITE_TOOLS = new Set(["write", "edit"])
-
-async function isSubagentSession(client, sessionID) {
-  if (!sessionID) return false
-  try {
-    const response = await client.session.get({ path: { id: sessionID } })
-    const session = response?.data ?? response
-    return Boolean(session?.parentID)
-  } catch {
-    return true
-  }
-}
 
 function extractJson(text) {
   const start = text.indexOf("{")
@@ -29,16 +19,37 @@ function extractJson(text) {
   }
 }
 
-export const QualityScore = async ({ client, directory, worktree }) => {
-  const root = worktree || directory
+function appendText(event, text) {
+  const result = event.result
+  if (result == null) return
+  if (typeof result === "string") {
+    event.result = `${result}\n\n${text}`
+    return
+  }
+  if (typeof result.output === "string") {
+    result.output = `${result.output}\n\n${text}`
+    return
+  }
+  if (Array.isArray(result.content)) {
+    result.content.push({ type: "text", text })
+    return
+  }
+  result.metadata = { ...(result.metadata || {}), qualityCard: text }
+}
 
-  return {
-    "tool.execute.after": async (input, output) => {
-      if (!WRITE_TOOLS.has(input.tool)) return
-      const target = input.args?.filePath || input.args?.path
+export default Plugin.define({
+  id: "knowledge-daily.quality-score",
+  async setup(ctx) {
+    const root = ctx.location?.directory || process.cwd()
+
+    await ctx.tool.hook("execute.after", async (event) => {
+      if (event.status && event.status !== "completed") return
+      if (!WRITE_TOOLS.has(event.tool)) return
+      const input = event.input || {}
+      const target = input.filePath || input.path
       if (typeof target !== "string" || !TARGET.test(target)) return
-      if (!(await isSubagentSession(client, input.sessionID))) return
 
+      // organize.json 只由整理子代理写入，因此这里不再额外判定会话层级。
       const file = path.isAbsolute(target) ? target : path.resolve(root, target)
 
       try {
@@ -49,14 +60,14 @@ export const QualityScore = async ({ client, directory, worktree }) => {
         )
         const parsed = extractJson(stdout?.toString() ?? "")
         if (!parsed?.card) {
-          output.output = `${output.output}\n\n⚠️ 质量评分未能运行：${(stderr || stdout || "").trim().slice(0, 800)}`
+          appendText(event, `⚠️ 质量评分未能运行：${(stderr || stdout || "").trim().slice(0, 800)}`)
           return
         }
-        output.output = `${output.output}\n\n${parsed.card}`
+        appendText(event, parsed.card)
       } catch (error) {
         const detail = error?.stderr?.toString() || error?.message || String(error)
-        output.output = `${output.output}\n\n⚠️ 质量评分异常：${detail.slice(0, 800)}`
+        appendText(event, `⚠️ 质量评分异常：${detail.slice(0, 800)}`)
       }
-    },
-  }
-}
+    })
+  },
+})
