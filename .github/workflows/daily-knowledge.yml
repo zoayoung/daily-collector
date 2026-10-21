@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: 检出
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -66,7 +66,7 @@ jobs:
 
     steps:
       - name: 检出
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
@@ -89,13 +89,13 @@ jobs:
           fi
 
       - name: 安装 uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.3.0
         with:
           enable-cache: true
           python-version: "3.12"
 
       - name: 安装 Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24"
 
@@ -165,7 +165,7 @@ jobs:
 
       - name: 失败时上传 work 现场
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: work-${{ needs.guard.outputs.date || github.run_id }}-${{ github.run_attempt }}
           path: work/${{ needs.guard.outputs.date }}/
