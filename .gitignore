@@ -1,4 +1,7 @@
-work/
+work/*
+!work/*/
+work/*/*
+!work/*/collect.json
 .venv/
 __pycache__/
 *.pyc

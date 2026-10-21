@@ -13,6 +13,14 @@
 
 编排细则（委派顺序、校验环/打分环、断点表、覆盖与恢复、渲染模板）见 `.scratch/knowledge-daily/spec.md` 的「编排协议」节。执行任一阶段前，先读该 spec——采集口径、打标签口径、去重规则、契约与产出结构的细则都在那里。
 
+## 自动运行
+
+GitHub Actions 每个自然日按 UTC+8 无头运行同一套流程，工作流见 `.github/workflows/daily-knowledge.yml`；触发、参数、幂等、失败与冒烟口径见 spec 的「自动运行」「CI 参数/凭证/幂等/失败/并发/冒烟」节。
+
+- 手动触发支持 `force` 覆盖；当日日报已存在时按 `force` 跳过或重新采集。
+- 成功后只提交 `daily-knowledge/` 与当日 `work/YYYY-MM-DD/collect.json`；其余中间产物不入库。
+- 失败不提交半成品、不自动重试，只上传 `work/<日期>/` artifact。
+
 ## 约束
 
 - 默认只读：未经用户明确要求，不修改项目中的任何文件、不开始实施、不提交或推送。用户只要求改文档时，只改指定文档。
@@ -26,8 +34,8 @@
 
 ## 数据
 
-- `work/YYYY-MM-DD/`：collect / analyze / organize / score / tokens 等中间 json，本地保留（.gitignore）
-- `daily-knowledge/YYYY-MM-DD.md`：知识日报，纳入版本控制
+- `work/YYYY-MM-DD/`：collect / analyze / organize / score / tokens 等中间 json，本地保留（.gitignore）；版本控制只放行每日 `collect.json`
+- `daily-knowledge/YYYY-MM-DD.md`：知识日报；`daily-knowledge/tokens/YYYY-MM-DD.md`：token 报告；均纳入版本控制
 - `.scratch/knowledge-daily/requirements/`：原始需求按日期归档（只读）；当前行为只看 spec
 
 ## 脚本与插件
@@ -44,6 +52,7 @@
 - 配置：复制 `.env.example` 为项目根 `.env`，填 `GITHUB_TOKEN=...`；也可直接设进程环境变量。进程环境优先于 `.env`（`.env` 已被 git 忽略）。
 - 获取：GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → `Generate new token`；Repository access 选 `Public repositories (read-only)`，无需额外权限。classic token 不勾任何 scope 也可。
 - 认证后配额：搜索 30 次/分、核心 5000 次/时。
+- CI：模型密钥只放仓库 Secret `OC_GO_API_KEY`（`opencode.json` 以 `{env:OC_GO_API_KEY}` 引用）；采集与回写使用 Actions 自带 `GITHUB_TOKEN`，不额外配置 Personal Access Token。
 
 ## Agent skills
 

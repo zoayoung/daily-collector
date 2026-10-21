@@ -1,0 +1,165 @@
+name: daily-knowledge
+
+on:
+  schedule:
+    # GitHub Actions 的 cron 按 UTC；00:00 UTC = 08:00 UTC+8
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "覆盖当天日报（重新采集并渲染）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  # 单一并发组：定时与手动触发不重叠
+  group: daily-knowledge
+  cancel-in-progress: false
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TZ: Asia/Shanghai
+      OPENCODE_DISABLE_AUTOUPDATE: "1"
+
+    steps:
+      - name: 检出
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: 计算 UTC+8 日期
+        id: date
+        shell: bash
+        run: echo "date=$(TZ=Asia/Shanghai date +%F)" >> "$GITHUB_OUTPUT"
+
+      - name: 幂等检查
+        id: guard
+        shell: bash
+        env:
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          DATE="${{ steps.date.outputs.date }}"
+          if [ "$FORCE" = "true" ]; then
+            # CI 无头：直接清理工作区当日产物，避免代理等待「三选一」。
+            # 保留 tokens.json，token 历史不丢。
+            rm -f "daily-knowledge/$DATE.md"
+            rm -f "work/$DATE/collect.json" \
+                  "work/$DATE/analyze.json" \
+                  "work/$DATE/organize.json" \
+                  "work/$DATE/score.json"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "force=true：已清理工作区当日阶段产物，按重新采集覆盖执行。" >> "$GITHUB_STEP_SUMMARY"
+          elif [ -f "daily-knowledge/$DATE.md" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "daily-knowledge/$DATE.md 已存在，force=false，跳过。" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 安装 uv
+        if: steps.guard.outputs.skip == 'false'
+        uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: 安装 Node
+        if: steps.guard.outputs.skip == 'false'
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: 同步 Python 依赖
+        if: steps.guard.outputs.skip == 'false'
+        run: uv sync --frozen
+
+      - name: 静态检查（先于模型调用）
+        if: steps.guard.outputs.skip == 'false'
+        shell: bash
+        run: |
+          node --check .opencode/plugins/quality-score.js
+          node --check .opencode/plugins/token-stats.js
+          python3 -m json.tool opencode.json > /dev/null
+          uv run ruff check scripts tests
+
+      - name: 单元测试（先于模型调用）
+        if: steps.guard.outputs.skip == 'false'
+        run: uv run python -m unittest discover -s tests -t .
+
+      - name: 安装锁定版本 opencode
+        if: steps.guard.outputs.skip == 'false'
+        shell: bash
+        run: |
+          npm install -g @opencode/cli@2.0.26 --no-fund --no-audit
+          opencode --version
+
+      - name: 模型自检
+        if: steps.guard.outputs.skip == 'false'
+        shell: bash
+        env:
+          OC_GO_API_KEY: ${{ secrets.OC_GO_API_KEY }}
+        run: |
+          : "${OC_GO_API_KEY:?OC_GO_API_KEY is required}"
+          opencode models | grep -q 'oc-go/deepseek-v4.1-flash'
+
+      - name: 无头运行知识采集
+        if: steps.guard.outputs.skip == 'false'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OC_GO_API_KEY: ${{ secrets.OC_GO_API_KEY }}
+        run: |
+          : "${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
+          : "${OC_GO_API_KEY:?OC_GO_API_KEY is required}"
+          opencode run --standalone --auto \
+            --model oc-go/deepseek-v4.1-flash \
+            --agent build \
+            "开始今天的知识采集"
+
+      - name: 校验产物
+        if: steps.guard.outputs.skip == 'false'
+        shell: bash
+        run: |
+          DATE="${{ steps.date.outputs.date }}"
+          uv run python scripts/validate.py --date "$DATE"
+          test -s "daily-knowledge/$DATE.md"
+          test -s "daily-knowledge/tokens/$DATE.md"
+
+      - name: 提交回写
+        if: steps.guard.outputs.skip == 'false'
+        shell: bash
+        run: |
+          DATE="${{ steps.date.outputs.date }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # 只发布日报、token 报告与当日采集产物
+          git add "daily-knowledge" "work/$DATE/collect.json"
+
+          if git diff --cached --quiet; then
+            echo "无变更，跳过提交。"
+            exit 0
+          fi
+
+          git commit -m "chore: daily knowledge $DATE"
+
+          # 并发组已挡住重叠；仍处理运行期间他人推送的情况
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: 失败时上传 work 现场
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: work-${{ steps.date.outputs.date || github.run_id }}-${{ github.run_attempt }}
+          path: work/${{ steps.date.outputs.date }}/
+          if-no-files-found: warn
+          retention-days: 7
