@@ -86,7 +86,7 @@ class FreeTagsValidateTest(unittest.TestCase):
         result = self.validate(analyze_document(["量子计算", "手冲咖啡", "Rust 生态"]))
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertNotIn("topics.md", result.stdout)
+        self.assertNotIn("之外的主题", result.stdout)
 
     def test_empty_themes_are_accepted(self) -> None:
         result = self.validate(analyze_document([]))
@@ -118,7 +118,7 @@ class FreeTagsValidateTest(unittest.TestCase):
         result = self.validate(document, "organize.json")
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertNotIn("topics.md", result.stdout)
+        self.assertNotIn("之外的主题", result.stdout)
         self.assertNotIn("当日无条目命中", result.stdout)
 
     def test_overview_allows_at_most_six_groups(self) -> None:
