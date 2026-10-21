@@ -38,6 +38,74 @@ function addBucket(target, message) {
   target.cost += message.cost
 }
 
+const AGENT_ORDER = ["build", "knowledge-analyze", "knowledge-organize"]
+const BUCKET_KEYS = ["messages", "input", "output", "cache_read", "cache_write", "reasoning", "cost"]
+
+function orderedAgents(agents) {
+  const rest = Object.keys(agents)
+    .filter((name) => !AGENT_ORDER.includes(name))
+    .sort((a, b) => a.localeCompare(b))
+  return [...AGENT_ORDER.filter((name) => Object.hasOwn(agents, name)), ...rest]
+}
+
+function bucketCells(bucket) {
+  return BUCKET_KEYS.map((key) => (bucket?.[key] == null ? "" : String(bucket[key])))
+}
+
+function tableRow(label, bucket) {
+  return `| ${label} | ${bucketCells(bucket).join(" | ")} |`
+}
+
+function tableRowWithoutLabel(bucket) {
+  return `| ${bucketCells(bucket).join(" | ")} |`
+}
+
+function endClock(startedAt, updatedAt) {
+  const sameDay = String(updatedAt).startsWith(`${String(startedAt).slice(0, 10)} `)
+  return sameDay ? String(updatedAt).slice(11) : String(updatedAt)
+}
+
+function sumRuns(runs) {
+  const total = Object.fromEntries(BUCKET_KEYS.map((key) => [key, 0]))
+  for (const run of runs) {
+    for (const key of BUCKET_KEYS) total[key] += Number(run.total?.[key] || 0)
+  }
+  return total
+}
+
+function renderReport(date, runs) {
+  const sections = runs.map((run, index) => {
+    const rows = orderedAgents(run.agents).map((agent) => tableRow(agent, run.agents[agent]))
+    if (run.total) rows.push(tableRow("合计", run.total))
+    return [
+      `## Run ${index + 1} · ${run.started_at} – ${endClock(run.started_at, run.updated_at)}`,
+      "",
+      "| 代理 | 消息数 | input | output | cache 读 | cache 写 | reasoning | cost(USD) |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      ...rows,
+    ].join("\n")
+  })
+
+  const daily = [
+    "## 当日合计",
+    "",
+    "| 消息数 | input | output | cache 读 | cache 写 | reasoning | cost(USD) |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
+    tableRowWithoutLabel(sumRuns(runs)),
+  ].join("\n")
+
+  return [`# Token 统计 · ${date}`, ...sections, daily].join("\n\n") + "\n"
+}
+
+async function writeReport(root, date, runs) {
+  if (!Array.isArray(runs) || runs.length === 0) return
+  const file = path.join(root, "daily-knowledge", "tokens", `${date}.md`)
+  const temp = `${file}.${process.pid}.tmp`
+  await fs.mkdir(path.dirname(file), { recursive: true })
+  await fs.writeFile(temp, renderReport(date, runs), "utf8")
+  await fs.rename(temp, file)
+}
+
 export const TokenStats = async ({ client, directory, worktree }) => {
   const root = worktree || directory
   const sessionRoot = new Map()
@@ -138,6 +206,8 @@ export const TokenStats = async ({ client, directory, worktree }) => {
     const temp = `${file}.${process.pid}.tmp`
     await fs.writeFile(temp, `${JSON.stringify(existing, null, 2)}\n`, "utf8")
     await fs.rename(temp, file)
+
+    await writeReport(root, day, existing.runs)
   }
 
   return {
