@@ -130,7 +130,7 @@
 - 关注面（v3）：删除 `.scratch/knowledge-daily/topics.md`；分析阶段自由打标签，不再有固定主题白名单；`themes` 为空数组表示「未打标签」，日报渲染为 `[其他]`。
 - 标签口径：每条建议 2–4 个标签；评分「标签精度」改为按标签个数给分（2–4 个满分、1 个中档、≥5 个降档、0 个 0 分），不再检查关键词证据。
 - 概览口径：整理阶段把自由标签合并为不超过 6 组，再写 `overview.themes`；0 命中省略。
-- 日报展示：每条元信息行固定为「Star：总数（今日 +增量）· 评分：总分 / 等级」；评分来自当日 `score.json`，按 `rank` 与 `full_name` 对齐；缺失时省略评分部分、其余照常。标题下保留「质量评分：均分 X · A a / B b / C c」。
+- 日报展示：每条元信息行固定为「Star：总数（今日 +增量）· 评分：总分 / 等级」；评分来自当日 `score.json`，按 `rank` 与 `full_name` 同时匹配；缺失处理与标题下行见「编排协议 · 渲染模板」。
 - 产物目录（v3）：`output/` 重命名为 `daily-knowledge/`，文件名仍为 `YYYY-MM-DD.md`；现有历史日报迁入，作为去重依据。`KNOWLEDGE_OUTPUT_DIR` 默认值、校验脚本、测试与文档同步改名。
 - token 报告：`.opencode/plugins/token-stats.js` 在刷新 `work/YYYY-MM-DD/tokens.json` 后，同时写 `daily-knowledge/tokens/YYYY-MM-DD.md`；内容按 run、按代理列出与 `tokens.json` 相同的字段，并给出当日合计。
 - 自动运行（v3）：GitHub Actions 每日 00:00 UTC（08:00 UTC+8）触发；`ubuntu-latest`；步骤为检出 → 安装 uv 与 Node → 同步依赖 → 跑单元测试 → 安装锁定版本的 opencode → 无头执行 `opencode run --auto "开始今天的知识采集"` → 校验产物 → 提交回写。
@@ -424,8 +424,10 @@
 ```
 
 - `overview.themes` 按 organize 中的顺序逐条输出；条目的 `themes` 为空数组时输出 `[其他]`。
-- Star 总数用千分位，今日新增照抄 `stars_today`（含 0）。
-- 逐条评分按 `score.json.items[]` 的 `rank` 与 `full_name` 对齐；`score.json` 缺失或 `valid=false` 时省略该条评分部分与标题下均分行，并在汇报中说明。
+- Star 总数用千分位；今日新增照抄 `stars_today` 的数值（含 0，不加千分位、不四舍五入）。
+- 逐条评分只采用 `score.json.items[]` 中 `rank` 与 `full_name` 同时匹配的条目；某条匹配不到（缺项、名次或全名不符）时，该条只省略「· 评分：总分 / 等级」，Star 照常输出，其余条目与标题行不受影响。
+- 标题下均分行仅在 `score.json` 存在、可解析、`valid=true` 且 `summary.average`、`summary.grades` 齐全时输出；均分照抄 `summary.average`，A/B/C 取 `summary.grades`。
+- `score.json` 缺失、不可解析、`valid=false` 或 `summary` 不可用时，标题下均分行与所有逐条评分一起省略，并在汇报中说明原因。
 - 无 `repeat` 时省略那两行；有 `repeat` 但 `new_progress` 为 null 时只留「🔁 重复」一行。
 - 除模板占位符外不增删段落，不改写任何文字与数字。
 
@@ -516,7 +518,8 @@
   - 结构完整：日期标题、质量评分摘要、今日概览（一句总述 + 分组要点）、GitHub 趋势齐全；条目格式符合模板。
   - 数量与排序：GitHub 趋势 15–20 条（或 gaps 说明不足）、按 `stars_today` 降序、`rank` 连续。
   - 标签自由：条目标签不再限定固定主题；每条建议 2–4 个；未打标签的渲染为 `[其他]`；概览分组不超过 6 组。
-  - 展示齐全：每条含总 star（千分位）、今日新增 star 与评分/等级；标题下含均分与 A/B/C 分布；评分缺失时只省略评分部分。
+  - 展示齐全：每条含总 star（千分位）、今日新增 star 与评分/等级；标题下含均分与 A/B/C 分布；逐条评分按 `rank` 与 `full_name` 同时匹配，单条缺失只省略该条评分，整份评分不可用才连标题行一起省略。
+  - 数字可核对：条目 star 总数/今日新增与 collect/organize 一致，逐条评分与 `score.json` 的 `total`/`grade` 一致，标题均分与分布与 `summary` 一致。
   - 篇幅：每条核心内容 ≤100 个汉字。
   - 去重可核查：每个 🔁 标记中的日期在 `daily-knowledge/` 历史中确实存在；30 天内无新进展的旧条目未出现。
   - 可追溯：work/YYYY-MM-DD/ 的 collect/analyze/organize/score 覆盖当天全部产出条目；当日 `collect.json` 已提交。
