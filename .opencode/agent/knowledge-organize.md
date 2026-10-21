@@ -9,7 +9,6 @@ permission:
   read:
     "*": deny
     "AGENTS.md": allow
-    ".scratch/knowledge-daily/topics.md": allow
     ".scratch/knowledge-daily/spec.md": allow
     "work": allow
     "work/**": allow

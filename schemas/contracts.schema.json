@@ -83,7 +83,7 @@
           "properties": {
             "themes": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": { "type": "string", "minLength": 1 },
               "uniqueItems": true
             },
             "repeat": {
@@ -127,6 +127,7 @@
         },
         "themes": {
           "type": "array",
+          "maxItems": 6,
           "items": {
             "type": "object",
             "additionalProperties": false,

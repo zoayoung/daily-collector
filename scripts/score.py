@@ -21,7 +21,6 @@ from _common import (
     WORK_DIR,
     cjk_count,
     is_date,
-    parse_topics,
     read_json,
     stamp,
     today,
@@ -183,38 +182,23 @@ def _score_format(item: dict, rules: dict) -> dict:
     }
 
 
-def _score_tags(item: dict, topics: list[dict], rules: dict) -> dict:
+def _score_tags(item: dict, rules: dict) -> dict:
     weights = rules["dimensions"]["tags"]
-    themes = item.get("themes") or []
-    names = {topic["name"] for topic in topics}
-    text = " ".join(
-        str(item.get(key) or "") for key in ("full_name", "description", "core", "why")
-    )
+    count = len(item.get("themes") or [])
 
-    base = weights["base"] if themes else 0
-    valid = weights["valid"] if themes and all(theme in names for theme in themes) else 0
-    evidence = 0
-    for topic in topics:
-        if topic["name"] in themes and _hits(text, topic["keywords"]):
-            evidence = weights["evidence"]
+    score = 0
+    for band in weights["bands"]:
+        upper = band.get("max")
+        if count >= band["min"] and (upper is None or count <= upper):
+            score = band["score"]
             break
-    if not themes:
-        spread = 0
-    elif len(themes) <= 3:
-        spread = weights["spread"]
-    else:
-        spread = max(1, round(weights["spread"] / 3))
 
-    notes = [f"主题 {len(themes)} 个"]
-    if not themes:
-        notes.append("未命中任何主题")
-    if evidence == 0 and themes:
-        notes.append("主题缺关键词证据")
-    return {
-        "score": base + valid + evidence + spread,
-        "max": sum(weights.values()),
-        "notes": notes,
-    }
+    notes = [f"标签 {count} 个"]
+    if count == 0:
+        notes.append("未打标签")
+    elif count >= 5:
+        notes.append("标签偏多")
+    return {"score": score, "max": weights["max"], "notes": notes}
 
 
 def _score_filler(core: str, why: str, rules: dict) -> dict:
@@ -225,14 +209,14 @@ def _score_filler(core: str, why: str, rules: dict) -> dict:
     return {"score": score, "max": weights["max"], "notes": notes, "hits": found}
 
 
-def score_item(item: dict, topics: list[dict], rules: dict) -> dict:
+def score_item(item: dict, rules: dict) -> dict:
     core = item.get("core") or ""
     why = item.get("why") or ""
     dimensions = {
         "summary": _score_summary(core, rules),
         "depth": _score_depth(core, why, rules),
         "format": _score_format(item, rules),
-        "tags": _score_tags(item, topics, rules),
+        "tags": _score_tags(item, rules),
         "filler": _score_filler(core, why, rules),
     }
     total = sum(dimension["score"] for dimension in dimensions.values())
@@ -290,12 +274,12 @@ def render_card(result: dict) -> str:
         if item["grade"] == "C":
             for dimension in item["dimensions"].values():
                 for note in dimension["notes"]:
-                    if note.startswith(("命中空洞词", "未见", "why", "主题缺", "未命中")):
+                    if note.startswith(("命中空洞词", "未见", "why", "未打标签", "标签偏多")):
                         lines.append(f"   ⚠ {note}")
     return "\n".join(lines)
 
 
-def evaluate(path: Path, rules: dict, topics: list[dict]) -> dict:
+def evaluate(path: Path, rules: dict) -> dict:
     errors, warnings, _ = validate_file(path)
     day = path.parent.name if is_date(path.parent.name) else today()
     if errors:
@@ -309,7 +293,7 @@ def evaluate(path: Path, rules: dict, topics: list[dict]) -> dict:
         }
 
     data = read_json(path)
-    items = [score_item(item, topics, rules) for item in data.get("github") or []]
+    items = [score_item(item, rules) for item in data.get("github") or []]
     grades = {"A": 0, "B": 0, "C": 0}
     for item in items:
         grades[item["grade"]] += 1
@@ -401,8 +385,7 @@ def main() -> int:
         return 2
 
     rules = load_rules()
-    topics = parse_topics()
-    result = evaluate(path, rules, topics)
+    result = evaluate(path, rules)
     score_file = None if args.no_write else write_score(path, result)
     result["card"] = render_card(result)
     result["score_file"] = score_file.as_posix() if score_file else None

@@ -1,4 +1,4 @@
-"""知识采集系统脚本公共工具：路径、时间、JSON 读写、汉字计数与主题解析。"""
+"""知识采集系统脚本公共工具：路径、时间、JSON 读写与汉字计数。"""
 
 from __future__ import annotations
 
@@ -20,15 +20,10 @@ DAILY_KNOWLEDGE_DIR = Path(os.environ.get("KNOWLEDGE_OUTPUT_DIR") or ROOT / "dai
 SCHEMA_DIR = ROOT / "schemas"
 CONFIG_DIR = ROOT / "config"
 SPEC = ROOT / ".scratch" / "knowledge-daily" / "spec.md"
-TOPICS = ROOT / ".scratch" / "knowledge-daily" / "topics.md"
 
 TIMEZONE = timezone(timedelta(hours=8))
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 CJK_RE = re.compile(r"[\u4e00-\u9fff]")
-
-TOPIC_HEADING_RE = re.compile(r"^##\s+(.+?)\s*$")
-TOPIC_KEYWORD_RE = re.compile(r"^-\s*关键词[:：]\s*(.+?)\s*$")
-TOPIC_EXCLUDE_RE = re.compile(r"^-\s*排除[:：]\s*(.+?)\s*$")
 
 
 def _load_env_file(path: Path) -> None:
@@ -102,30 +97,3 @@ def write_json(path: Path | str, data) -> Path:
 def cjk_count(text: str | None) -> int:
     """统计文本中的汉字数量（英文单词与数字不计）。"""
     return len(CJK_RE.findall(text or ""))
-
-
-def parse_topics(path: Path | str = TOPICS) -> list[dict]:
-    """解析 topics.md，返回各主题的名称、关键词与排除词。"""
-    topics: list[dict] = []
-    current: dict | None = None
-    for raw in Path(path).read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        heading = TOPIC_HEADING_RE.match(line)
-        if heading:
-            current = {"name": heading.group(1).strip(), "keywords": [], "excluded": []}
-            topics.append(current)
-            continue
-        if current is None:
-            continue
-        keywords = TOPIC_KEYWORD_RE.match(line)
-        if keywords:
-            current["keywords"].extend(_split_terms(keywords.group(1)))
-            continue
-        excluded = TOPIC_EXCLUDE_RE.match(line)
-        if excluded:
-            current["excluded"].extend(_split_terms(excluded.group(1)))
-    return topics
-
-
-def _split_terms(value: str) -> list[str]:
-    return [term.strip() for term in re.split(r"[、,，;；]", value) if term.strip()]
