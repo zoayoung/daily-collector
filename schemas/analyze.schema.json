@@ -9,7 +9,7 @@
     "date": { "$ref": "https://knowledge-daily.local/contracts.schema.json#/$defs/date" },
     "github": {
       "type": "array",
-      "maxItems": 20,
+      "maxItems": 50,
       "items": { "$ref": "https://knowledge-daily.local/contracts.schema.json#/$defs/analyzedRepo" }
     },
     "stats": {
