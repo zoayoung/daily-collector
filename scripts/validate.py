@@ -23,7 +23,6 @@ from _common import (
     WORK_DIR,
     cjk_count,
     is_date,
-    parse_topics,
     read_json,
     today,
 )
@@ -89,10 +88,6 @@ def _history_dates() -> set[str]:
     return {path.stem for path in DAILY_KNOWLEDGE_DIR.glob("*.md") if DATE_RE.match(path.stem)}
 
 
-def _topic_names() -> set[str]:
-    return {topic["name"] for topic in parse_topics()}
-
-
 def _days_between(earlier: str, later: str) -> int:
     return (date.fromisoformat(later) - date.fromisoformat(earlier)).days
 
@@ -112,15 +107,6 @@ def _check_repeat(item: dict, day: str, history: set[str], where: str, errors: l
         and repeat.get("new_progress")
     ):
         errors.append(f"{where} 30 天外的条目不应写 new_progress")
-
-
-def _check_themes(item: dict, topics: set[str], where: str, errors: list[str]) -> None:
-    themes = item.get("themes")
-    if not isinstance(themes, list):
-        return
-    unknown = sorted(set(themes) - topics)
-    if unknown:
-        errors.append(f"{where} themes 含 topics.md 之外的主题：{', '.join(unknown)}")
 
 
 def _check_order(items: list[dict], errors: list[str], where: str) -> None:
@@ -174,9 +160,6 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
         _check_order(items, errors, "github")
 
     if stage in {"analyze", "organize"}:
-        topics = _topic_names()
-        for index, item in enumerate(items, start=1):
-            _check_themes(item, topics, f"github[{index}]", errors)
         stats = data.get("stats") or {}
         _unknown(stats, stats_keys, "stats", errors)
         if stats.get("github_count") != len(items):
@@ -206,15 +189,8 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
             ((overview_schema.get("properties") or {}).get("themes") or {}).get("items", {}),
             contracts,
         )
-        topic_names = _topic_names()
-        used = {theme for item in items for theme in item.get("themes") or []}
         for index, theme in enumerate(overview.get("themes") or [], start=1):
-            name = theme.get("name")
             _unknown(theme, theme_keys, f"overview.themes[{index}]", errors)
-            if name not in topic_names:
-                errors.append(f"overview.themes[{index}].name={name} 不在 topics.md 中")
-            if name not in used:
-                warnings.append(f"overview.themes[{index}].name={name} 当日无条目命中")
         stats = data.get("stats") or {}
         if not isinstance(stats.get("dropped_by_organize"), int):
             errors.append("stats.dropped_by_organize 必须是整数")

@@ -1,6 +1,6 @@
 ---
 name: knowledge-analyze
-description: 知识采集系统的分析子代理。当日 collect.json 已存在而 analyze.json 尚未产出，或主代理打回低分条目要求重写时委派：加载技能 knowledge-analyze 并执行，只做项目内容分析（按 topics.md 打主题标签、时间去重、核查新进展、写分析要点与评价），不做选取、不写日报，产出 work/YYYY-MM-DD/analyze.json。主题与去重口径见 spec 与技能。
+description: 知识采集系统的分析子代理。当日 collect.json 已存在而 analyze.json 尚未产出，或主代理打回低分条目要求重写时委派：加载技能 knowledge-analyze 并执行，只做项目内容分析（按项目内容自由打标签、时间去重、核查新进展、写分析要点与评价），不做选取、不写日报，产出 work/YYYY-MM-DD/analyze.json。标签与去重口径见 spec 与技能。
 mode: subagent
 model: oc-go/deepseek-v4.1-flash
 temperature: 0.1
@@ -9,7 +9,6 @@ permission:
   read:
     "*": deny
     "AGENTS.md": allow
-    ".scratch/knowledge-daily/topics.md": allow
     ".scratch/knowledge-daily/spec.md": allow
     "work": allow
     "work/**": allow

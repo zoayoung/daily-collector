@@ -1,6 +1,6 @@
 # 知识采集系统
 
-每天产出一份中文知识日报：采集 GitHub 当日趋势项目、按关注主题打标签，分析、整理后按模板渲染到 `daily-knowledge/YYYY-MM-DD.md`。关注主题定义见 `.scratch/knowledge-daily/topics.md`。
+每天产出一份中文知识日报：采集 GitHub 当日趋势项目、按项目内容自由打标签，分析、整理后按模板渲染到 `daily-knowledge/YYYY-MM-DD.md`。标签口径见 `.scratch/knowledge-daily/spec.md`。
 
 ## 工作流
 
