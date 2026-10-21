@@ -15,8 +15,8 @@ for _stream in (sys.stdout, sys.stderr):
         _stream.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parent.parent
-WORK_DIR = ROOT / "work"
-OUTPUT_DIR = ROOT / "output"
+WORK_DIR = Path(os.environ.get("KNOWLEDGE_WORK_DIR") or ROOT / "work")
+OUTPUT_DIR = Path(os.environ.get("KNOWLEDGE_OUTPUT_DIR") or ROOT / "output")
 SCHEMA_DIR = ROOT / "schemas"
 CONFIG_DIR = ROOT / "config"
 SPEC = ROOT / ".scratch" / "knowledge-daily" / "spec.md"

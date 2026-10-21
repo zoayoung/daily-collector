@@ -292,10 +292,13 @@ def main() -> int:
         targets.extend(WORK_DIR / args.date / f"{stage}.json" for stage in STAGE_SCHEMAS)
         targets = [path for path in targets if path.exists()]
     if args.all:
-        dates = sorted(path.name for path in WORK_DIR.glob("*") if is_date(path.name))
-        if dates:
-            targets.extend(WORK_DIR / dates[-1] / f"{stage}.json" for stage in STAGE_SCHEMAS)
-            targets = [path for path in targets if path.exists()]
+        days = sorted((path.name for path in WORK_DIR.glob("*") if is_date(path.name)), reverse=True)
+        for day in days:
+            found = [WORK_DIR / day / f"{stage}.json" for stage in STAGE_SCHEMAS]
+            found = [path for path in found if path.exists()]
+            if found:
+                targets.extend(found)
+                break
     if not targets:
         targets = [WORK_DIR / today() / f"{stage}.json" for stage in STAGE_SCHEMAS]
         targets = [path for path in targets if path.exists()]

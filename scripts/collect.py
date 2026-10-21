@@ -11,17 +11,19 @@ import argparse
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
+from http.client import IncompleteRead
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _common import WORK_DIR, is_date, read_json, stamp, today, write_json
 
-API = "https://api.github.com"
+API = (os.environ.get("KNOWLEDGE_GITHUB_API") or "https://api.github.com").rstrip("/")
 MAX_HISTORY_CALLS = 20
 PICK_LIMIT = 20
 MIN_ENTRIES = 15
@@ -44,17 +46,24 @@ def headers() -> dict[str, str]:
 
 
 def get_json(url: str):
-    request = urllib.request.Request(url, headers=headers())
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as error:
-        reset = error.headers.get("X-RateLimit-Reset") if error.headers else None
-        hint = f"，限流重置时间戳 {reset}" if reset else ""
-        auth_hint = "，请检查 GITHUB_TOKEN 是否有效" if error.code == 401 else ""
-        raise RuntimeError(f"HTTP {error.code} {url}{hint}{auth_hint}") from error
-    except urllib.error.URLError as error:
-        raise RuntimeError(f"网络不可达 {url}：{error.reason}") from error
+    """GET 并解析 JSON；对连接中断与网络异常重试，HTTP 错误直接抛出。"""
+    last_error: Exception | None = None
+    for attempt in range(3):
+        request = urllib.request.Request(url, headers=headers())
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            reset = error.headers.get("X-RateLimit-Reset") if error.headers else None
+            hint = f"，限流重置时间戳 {reset}" if reset else ""
+            auth_hint = "，请检查 GITHUB_TOKEN 是否有效" if error.code == 401 else ""
+            raise RuntimeError(f"HTTP {error.code} {url}{hint}{auth_hint}") from error
+        except (IncompleteRead, urllib.error.URLError) as error:
+            last_error = error
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+    reason = getattr(last_error, "reason", last_error)
+    raise RuntimeError(f"网络不可达 {url}：{reason}") from last_error
 
 
 def load_baselines(day: str) -> dict[str, tuple[str, int]]:
@@ -110,33 +119,26 @@ def search_candidates(day: str) -> list[dict]:
 
 
 def star_history(full_name: str, day: str) -> int | None:
+    """官方 star 历史接口：按周返回 {week, total, days[7]}，days[i] 为周内第 i 天新增。"""
     url = f"{API}/repos/{full_name}/stargazers/history"
     try:
         payload = get_json(url)
     except RuntimeError:
         return None
-    entries = payload.get("daily") or payload.get("days") or payload.get("history") or []
-    if not isinstance(entries, list):
+    if not isinstance(payload, list):
         return None
-    parsed: list[tuple[str, int]] = []
-    for entry in entries:
-        if not isinstance(entry, dict):
+    for bucket in payload:
+        if not isinstance(bucket, dict):
             continue
-        entry_day = entry.get("date") or entry.get("day")
-        count = entry.get("count", entry.get("count_"))
-        if count is None:
-            count = entry.get("stars")
-        if is_date(entry_day) and isinstance(count, int):
-            parsed.append((entry_day, count))
-    if not parsed:
-        return None
-    exact = [count for entry_day, count in parsed if entry_day == day]
-    if exact:
-        return exact[0]
-    earlier = [(entry_day, count) for entry_day, count in parsed if entry_day <= day]
-    if not earlier:
-        return None
-    return max(earlier)[1]
+        week = bucket.get("week")
+        days = bucket.get("days")
+        if not isinstance(week, int) or not isinstance(days, list):
+            continue
+        start = datetime.fromtimestamp(week, UTC).date()
+        for offset, count in enumerate(days[:7]):
+            if (start + timedelta(days=offset)).isoformat() == day and isinstance(count, int):
+                return count
+    return None
 
 
 def build(day: str) -> dict:

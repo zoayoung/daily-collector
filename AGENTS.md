@@ -15,6 +15,7 @@
 
 ## 约束
 
+- 默认只读：未经用户明确要求，不修改项目中的任何文件、不开始实施、不提交或推送。用户只要求改文档时，只改指定文档。
 - 采集由 Python 脚本（`scripts/collect.py`）完成；契约校验与质量评分为 Python（`scripts/validate.py`、`scripts/score.py`）；其余阶段零脚本。
 - 字段与形状以 `schemas/` 为唯一来源；评分词表在 `config/score-rules.json`；两者都不在技能里复述。
 - 子代理只有两个：`knowledge-analyze`（分析）与 `knowledge-organize`（整理）；采集不再是子代理。
@@ -33,7 +34,7 @@
 
 - `uv run python scripts/collect.py|validate.py|score.py`：采集、校验、评分；依赖由 `uv` 管理。
 - `.opencode/plugins/quality-score.js`：写 `organize.json` 后自动校验并打分。
-- 开发检查：首次执行 `git config core.hooksPath .githooks`，之后 pre-commit 会跑 ruff、compileall、`node --check`、JSON 解析与插件 `$` 扫描。
+- 开发检查：首次执行 `git config core.hooksPath .githooks`，之后 pre-commit 会跑 ruff、compileall、CLI 回归测试（`uv run python -m unittest discover -s tests -t .`）、`node --check`、JSON 解析与插件 `$` 扫描。
 - `.opencode/plugins/token-stats.js`：聚合每次运行的 token 消耗到 `work/YYYY-MM-DD/tokens.json`。
 
 ## 凭证
