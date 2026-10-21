@@ -16,7 +16,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 ROOT = Path(__file__).resolve().parent.parent
 WORK_DIR = Path(os.environ.get("KNOWLEDGE_WORK_DIR") or ROOT / "work")
-OUTPUT_DIR = Path(os.environ.get("KNOWLEDGE_OUTPUT_DIR") or ROOT / "output")
+DAILY_KNOWLEDGE_DIR = Path(os.environ.get("KNOWLEDGE_OUTPUT_DIR") or ROOT / "daily-knowledge")
 SCHEMA_DIR = ROOT / "schemas"
 CONFIG_DIR = ROOT / "config"
 SPEC = ROOT / ".scratch" / "knowledge-daily" / "spec.md"
