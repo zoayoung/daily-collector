@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Self
@@ -28,18 +30,55 @@ def fixture_bytes(name: str) -> bytes:
     return (FIXTURE_DIR / name).read_bytes()
 
 
+def search_request(path: str) -> tuple[str, int]:
+    """从搜索请求路径解析 star 区间与页码。"""
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+    text = (query.get("q") or [""])[0]
+    match = re.search(r"stars:(\S+)", text)
+    star_range = match.group(1) if match else ""
+    page = int((query.get("page") or ["1"])[0])
+    return star_range, page
+
+
+def search_payload(items: list[dict]) -> bytes:
+    """把条目列表包装成搜索响应体。"""
+    return json.dumps(
+        {"total_count": len(items), "incomplete_results": False, "items": items},
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+
 class FixtureServer:
     """本地 HTTP 服务器，按路径回放搜索与 star 历史 fixture。
 
     break_first_search=True 时，第一次搜索请求只发送一半响应体并断开，
     用于复现 http.client.IncompleteRead。
+
+    search_pages 可按 (star 区间, 页码) 覆盖搜索响应；值可以是条目列表、
+    完整响应 dict 或原始字节。未覆盖的请求回放 search_repositories.json。
     """
 
-    def __init__(self, break_first_search: bool = False) -> None:
+    def __init__(
+        self,
+        break_first_search: bool = False,
+        search_pages: dict[tuple[str, int], object] | None = None,
+    ) -> None:
         self.break_first_search = break_first_search
+        self.search_pages = search_pages or {}
         self.requests: list[str] = []
+        self._search_requests = 0
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self.url = f"http://127.0.0.1:{self._server.server_address[1]}"
+
+    def _search_body(self, path: str) -> bytes:
+        value = self.search_pages.get(search_request(path))
+        if value is None:
+            return fixture_bytes("search_repositories.json")
+        if isinstance(value, (bytes, bytearray)):
+            return bytes(value)
+        if isinstance(value, list):
+            return search_payload(value)
+        return json.dumps(value, ensure_ascii=False).encode("utf-8")
 
     def _handler(self):
         outer = self
@@ -51,8 +90,9 @@ class FixtureServer:
             def do_GET(self) -> None:
                 outer.requests.append(self.path)
                 if self.path.startswith("/search/repositories"):
-                    body = fixture_bytes("search_repositories.json")
-                    broken = outer.break_first_search and outer.requests.count(self.path) == 1
+                    outer._search_requests += 1
+                    body = outer._search_body(self.path)
+                    broken = outer.break_first_search and outer._search_requests == 1
                 elif "/stargazers/history" in self.path:
                     body = fixture_bytes("star_history.json")
                     broken = False

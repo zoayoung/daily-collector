@@ -191,6 +191,21 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
                 f"入榜不足 {rules['min_items']} 条（实际 {len(items)} 条），gaps 中应说明原因"
             )
         _check_order(items, errors, "github")
+        stats = data.get("stats")
+        if stats is not None:
+            _unknown(stats, stats_keys, "stats", errors)
+            candidates = stats.get("candidates")
+            eligible = stats.get("eligible")
+            dropped = stats.get("dropped_recent_duplicates")
+            if candidates - dropped != eligible:
+                errors.append(
+                    "stats.candidates - stats.dropped_recent_duplicates="
+                    f"{candidates - dropped} 与 stats.eligible={eligible} 不一致"
+                )
+            if eligible < len(items):
+                errors.append(
+                    f"stats.eligible={eligible} 小于入榜条数 {len(items)}"
+                )
 
     if stage in {"analyze", "organize"}:
         stats = data.get("stats") or {}

@@ -54,7 +54,7 @@ class ValidationThresholdTest(unittest.TestCase):
         )
 
     def test_collect_below_min_items_warns(self) -> None:
-        items = [repo(f"owner/repo{i}", 40 - i) for i in range(14)]
+        items = [repo(f"owner/repo{i}", 40 - i) for i in range(9)]
         document = {
             "date": DAY,
             "collected_at": "2026-10-22 08:00",
@@ -65,10 +65,10 @@ class ValidationThresholdTest(unittest.TestCase):
         result = self.validate(self.write("collect.json", document))
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("入榜不足 15 条", result.stdout)
+        self.assertIn("入榜不足 10 条", result.stdout)
 
     def test_collect_at_min_items_has_no_warning(self) -> None:
-        items = [repo(f"owner/repo{i}", 40 - i) for i in range(15)]
+        items = [repo(f"owner/repo{i}", 40 - i) for i in range(10)]
         document = {
             "date": DAY,
             "collected_at": "2026-10-22 08:00",

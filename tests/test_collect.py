@@ -51,7 +51,7 @@ class CollectCliTest(unittest.TestCase):
             data = self.collect(server)
 
         search_calls = [path for path in server.requests if path.startswith("/search/repositories")]
-        self.assertEqual(len(search_calls), 2)
+        self.assertEqual(len(search_calls), 5)
         self.assertEqual(len(data["github"]), 3)
 
     def test_fails_without_token_and_makes_no_request(self) -> None:

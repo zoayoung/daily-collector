@@ -1,4 +1,4 @@
-"""采集脚本：GitHub 搜索 API → 今日新增 star → 排序取前 20 → collect.json。
+"""采集脚本：GitHub 搜索 API（4 个 star 区间）→ 今日新增 star → 排序取前 50 → collect.json。
 
 用法：
     uv run python scripts/collect.py --date 2026-10-21
@@ -33,9 +33,12 @@ from _common import (
 )
 
 API = (os.environ.get("KNOWLEDGE_GITHUB_API") or "https://api.github.com").rstrip("/")
-MAX_HISTORY_CALLS = 20
-PICK_LIMIT = 20
-MIN_ENTRIES = 15
+STAR_RANGES = ("100..500", "500..2000", "2000..10000", ">10000")
+MAX_PAGES = 2
+PER_PAGE = 100
+MAX_HISTORY_CALLS = 100
+PICK_LIMIT = 50
+MIN_ENTRIES = 10
 
 
 def token() -> str | None:
@@ -101,29 +104,46 @@ def load_baselines(day: str) -> dict[str, tuple[str, int]]:
 
 def search_candidates(day: str) -> list[dict]:
     cutoff = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
-    query = f"pushed:>={cutoff}+stars:>=100"
-    url = (
-        f"{API}/search/repositories"
-        f"?q={urllib.parse.quote(query, safe=':+>=<>')}"
-        "&sort=stars&order=desc&per_page=100"
-    )
-    payload = get_json(url)
-    repos = []
-    for item in payload.get("items", []):
-        repos.append(
-            {
-                "full_name": item.get("full_name"),
-                "url": item.get("html_url"),
-                "description": item.get("description"),
-                "language": item.get("language"),
-                "stars_total": item.get("stargazers_count"),
-                "stars_today": None,
-                "stars_today_source": None,
-                "forks": item.get("forks_count"),
-                "created_at": (item.get("created_at") or "")[:10],
-                "pushed_at": (item.get("pushed_at") or "")[:10],
-            }
-        )
+    collected: list[dict] = []
+    for star_range in STAR_RANGES:
+        query = f"pushed:>={cutoff} stars:{star_range}"
+        for page in range(1, MAX_PAGES + 1):
+            params = urllib.parse.urlencode(
+                {
+                    "q": query,
+                    "sort": "stars",
+                    "order": "desc",
+                    "per_page": PER_PAGE,
+                    "page": page,
+                }
+            )
+            payload = get_json(f"{API}/search/repositories?{params}")
+            items = payload.get("items", [])
+            for item in items:
+                collected.append(
+                    {
+                        "full_name": item.get("full_name"),
+                        "url": item.get("html_url"),
+                        "description": item.get("description"),
+                        "language": item.get("language"),
+                        "stars_total": item.get("stargazers_count"),
+                        "stars_today": None,
+                        "stars_today_source": None,
+                        "forks": item.get("forks_count"),
+                        "created_at": (item.get("created_at") or "")[:10],
+                        "pushed_at": (item.get("pushed_at") or "")[:10],
+                    }
+                )
+            if len(items) < PER_PAGE:
+                break
+    seen: set[str] = set()
+    repos: list[dict] = []
+    for repo in collected:
+        key = (repo.get("full_name") or "").lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        repos.append(repo)
     return repos
 
 
@@ -164,6 +184,11 @@ def build(day: str) -> dict:
     dropped_recent_duplicates = len(candidates) - len(eligible)
     if not eligible:
         raise RuntimeError("按 30 天重复窗口过滤后没有任何候选")
+    stats = {
+        "candidates": len(candidates),
+        "eligible": len(eligible),
+        "dropped_recent_duplicates": dropped_recent_duplicates,
+    }
 
     local_diff = 0
     history_calls = 0
@@ -225,6 +250,7 @@ def build(day: str) -> dict:
         "date": day,
         "collected_at": stamp(),
         "github": picked,
+        "stats": stats,
         "gaps": gaps,
     }
 
