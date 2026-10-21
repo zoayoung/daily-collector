@@ -115,6 +115,42 @@ class CandidatePoolTest(unittest.TestCase):
             [f"owner/repo{i:02d}" for i in range(50)],
         )
 
+    def test_picks_by_different_local_diff_gains_in_descending_order(self) -> None:
+        baseline = self.work / "2026-10-20" / "collect.json"
+        baseline.parent.mkdir(parents=True)
+        baseline.write_text(
+            json.dumps(
+                {
+                    "github": [
+                        {"full_name": "owner/alpha", "stars_total": 990},
+                        {"full_name": "owner/beta", "stars_total": 870},
+                        {"full_name": "owner/gamma", "stars_total": 1080},
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        pages = empty_pages()
+        pages[("100..500", 1)] = [
+            item("owner/alpha", 1000),
+            item("owner/beta", 900),
+            item("owner/gamma", 1100),
+        ]
+
+        data, requests = self.collect(pages)
+
+        self.assertEqual(
+            [entry["full_name"] for entry in data["github"]],
+            ["owner/beta", "owner/gamma", "owner/alpha"],
+        )
+        self.assertEqual(
+            [entry["stars_today"] for entry in data["github"]],
+            [30, 20, 10],
+        )
+        self.assertTrue(all(entry["stars_today_source"] == "local_diff" for entry in data["github"]))
+        self.assertFalse([path for path in requests if "/stargazers/history" in path])
+
     def test_star_history_fallback_is_capped_at_one_hundred_calls(self) -> None:
         pages = empty_pages()
         pages[("100..500", 1)] = [item(f"owner/repo{i:03d}", 900 - i) for i in range(100)]

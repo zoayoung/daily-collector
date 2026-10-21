@@ -16,15 +16,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _common import (
-    CONFIG_DIR,
     SCHEMA_DIR,
     WORK_DIR,
     cjk_count,
     is_date,
+    load_validation_rules,
     published_history,
     read_json,
     today,
-    window_bounds,
+    window_start,
 )
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
@@ -34,30 +34,6 @@ STAGE_SCHEMAS = {
     "analyze": "analyze.schema.json",
     "organize": "organize.schema.json",
 }
-
-VALIDATION_RULE_KEYS = (
-    "dedupe_window_days",
-    "collect_min_items",
-    "report_min_items",
-    "report_max_items",
-    "core_max_cjk",
-)
-
-
-def load_validation_rules() -> dict:
-    """读取语义阈值配置；缺失或缺键时给出可定位的失败信息。"""
-    path = CONFIG_DIR / "validation-rules.json"
-    try:
-        rules = read_json(path)
-    except FileNotFoundError as error:
-        raise SystemExit(f"❌ 校验失败：找不到校验规则 {path.as_posix()}") from error
-    except (OSError, ValueError) as error:
-        raise SystemExit(f"❌ 校验失败：无法读取校验规则 {path.as_posix()}：{error}") from error
-    missing = [key for key in VALIDATION_RULE_KEYS if key not in rules]
-    if missing:
-        raise SystemExit(f"❌ 校验失败：{path.as_posix()} 缺少 {', '.join(missing)}")
-    return rules
-
 
 def load_registry() -> Registry:
     contracts = read_json(SCHEMA_DIR / "contracts.schema.json")
@@ -113,14 +89,14 @@ def _check_duplicate_window(
     where: str,
     errors: list[str],
 ) -> None:
-    """30 天窗口硬闸：窗口内零例外；窗口外 repeat 必须等于最近发布日期。"""
+    """重复窗口硬闸：窗口内零例外；窗口外 repeat 必须等于最近发布日期。"""
     name = item.get("full_name") or ""
     dates = history.get(name.lower(), [])
-    start, _ = window_bounds(day, window_days)
+    start = window_start(day, window_days)
     recent = [value for value in dates if value >= start]
     if recent:
         errors.append(
-            f"{where} {name} 在 30 天窗口内出现过（最近 {recent[-1]}），不得输出"
+            f"{where} {name} 在 {window_days} 天窗口内出现过（最近 {recent[-1]}），不得输出"
         )
         return
     repeat = item.get("repeat")
@@ -132,7 +108,7 @@ def _check_duplicate_window(
         return
     latest = dates[-1]
     if not repeat:
-        errors.append(f"{where} 30 天外重复项目必须写 repeat.last_seen={latest}")
+        errors.append(f"{where} {window_days} 天外重复项目必须写 repeat.last_seen={latest}")
         return
     last_seen = repeat.get("last_seen")
     if last_seen not in dates:
@@ -237,6 +213,26 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
                     errors.append(
                         "stats.dropped_recent_duplicates="
                         f"{dropped} 应沿用 collect.json 的 {expected_dropped}"
+                    )
+                collected_items = collected.get("github") or []
+                if len(items) != len(collected_items):
+                    errors.append(
+                        f"analyze 条目数 {len(items)} 与 collect.json 的 "
+                        f"{len(collected_items)} 不一致"
+                    )
+                collected_names = {
+                    (item.get("full_name") or "").lower() for item in collected_items
+                }
+                analyzed_names = {(name or "").lower() for name in names}
+                missing = sorted(collected_names - analyzed_names)
+                extra = sorted(analyzed_names - collected_names)
+                if missing:
+                    errors.append(
+                        f"analyze 缺少 collect.json 中的条目：{', '.join(missing)}"
+                    )
+                if extra:
+                    errors.append(
+                        f"analyze 出现 collect.json 中不存在的条目：{', '.join(extra)}"
                     )
 
     if stage == "organize":
