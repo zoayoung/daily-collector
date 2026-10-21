@@ -21,7 +21,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _common import WORK_DIR, is_date, read_json, stamp, today, write_json
+from _common import (
+    WORK_DIR,
+    dedupe_window_days,
+    is_date,
+    read_json,
+    recent_duplicates,
+    stamp,
+    today,
+    write_json,
+)
 
 API = (os.environ.get("KNOWLEDGE_GITHUB_API") or "https://api.github.com").rstrip("/")
 MAX_HISTORY_CALLS = 20
@@ -150,11 +159,17 @@ def build(day: str) -> dict:
     if not candidates:
         raise RuntimeError("搜索 API 未返回任何候选")
 
+    recent = recent_duplicates(day, dedupe_window_days())
+    eligible = [repo for repo in candidates if repo["full_name"].lower() not in recent]
+    dropped_recent_duplicates = len(candidates) - len(eligible)
+    if not eligible:
+        raise RuntimeError("按 30 天重复窗口过滤后没有任何候选")
+
     local_diff = 0
     history_calls = 0
     history_failed = 0
 
-    for repo in candidates:
+    for repo in eligible:
         name = repo["full_name"]
         baseline = baselines.get(name)
         if baseline and baseline[0] == yesterday:
@@ -164,7 +179,7 @@ def build(day: str) -> dict:
 
     pending = [
         repo
-        for repo in candidates
+        for repo in eligible
         if repo["stars_today_source"] is None
     ]
     pending.sort(key=lambda repo: repo["stars_total"] or 0, reverse=True)
@@ -181,7 +196,7 @@ def build(day: str) -> dict:
         repo["stars_today_source"] = "star_history"
 
     ranked = sorted(
-        (repo for repo in candidates if repo["stars_today"] is not None),
+        (repo for repo in eligible if repo["stars_today"] is not None),
         key=lambda repo: repo["stars_today"],
         reverse=True,
     )
@@ -192,7 +207,10 @@ def build(day: str) -> dict:
         )
     missing = [repo["full_name"] for repo in picked if not repo["url"] or not repo["full_name"]]
 
-    gaps.insert(0, f"候选 {len(candidates)} 个，入榜 {len(picked)} 个")
+    gaps.insert(
+        0,
+        f"候选 {len(candidates)} 个，30 天窗口剔除 {dropped_recent_duplicates} 个，入榜 {len(picked)} 个",
+    )
     gaps.append(
         f"star_history 调用 {history_calls} 次（上限 {MAX_HISTORY_CALLS}），失败 {history_failed} 次"
     )
