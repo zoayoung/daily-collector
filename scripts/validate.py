@@ -35,7 +35,13 @@ STAGE_SCHEMAS = {
     "organize": "organize.schema.json",
 }
 
-VALIDATION_RULE_KEYS = ("dedupe_window_days", "min_items", "core_max_cjk")
+VALIDATION_RULE_KEYS = (
+    "dedupe_window_days",
+    "collect_min_items",
+    "report_min_items",
+    "report_max_items",
+    "core_max_cjk",
+)
 
 
 def load_validation_rules() -> dict:
@@ -183,9 +189,9 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
         nulls = [item.get("full_name") for item in items if item.get("stars_today") is None]
         if nulls:
             errors.append(f"collect 不应包含 stars_today=null 的条目：{', '.join(nulls)}")
-        if len(items) < rules["min_items"]:
+        if len(items) < rules["collect_min_items"]:
             warnings.append(
-                f"入榜不足 {rules['min_items']} 条（实际 {len(items)} 条），gaps 中应说明原因"
+                f"入榜不足 {rules['collect_min_items']} 条（实际 {len(items)} 条），gaps 中应说明原因"
             )
         _check_order(items, errors, "github")
         stats = data.get("stats")
@@ -234,6 +240,14 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
                     )
 
     if stage == "organize":
+        if len(items) < rules["report_min_items"]:
+            warnings.append(
+                f"定稿不足 {rules['report_min_items']} 条（实际 {len(items)} 条），gaps 中应说明原因"
+            )
+        if len(items) > rules["report_max_items"]:
+            errors.append(
+                f"定稿 {len(items)} 条，超过上限 {rules['report_max_items']} 条"
+            )
         ranks = [item.get("rank") for item in items]
         if ranks != list(range(1, len(items) + 1)):
             errors.append(f"rank 必须是 1..{len(items)} 的连续整数，实际为 {ranks}")

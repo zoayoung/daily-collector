@@ -1,5 +1,7 @@
 {
   "dedupe_window_days": 30,
-  "min_items": 10,
+  "collect_min_items": 10,
+  "report_min_items": 10,
+  "report_max_items": 15,
   "core_max_cjk": 100
 }

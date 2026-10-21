@@ -13,7 +13,7 @@ DAY = "2026-10-22"
 HISTORY_DAY = "2026-08-31"
 
 
-def analyze_document(last_seen: str, new_progress: str | None) -> dict:
+def analyze_document(last_seen: str) -> dict:
     return {
         "date": DAY,
         "github": [
@@ -29,7 +29,7 @@ def analyze_document(last_seen: str, new_progress: str | None) -> dict:
                 "created_at": "2020-01-01",
                 "pushed_at": DAY,
                 "themes": [],
-                "repeat": {"last_seen": last_seen, "new_progress": new_progress},
+                "repeat": {"last_seen": last_seen},
                 "core": "示例项目的分析要点。",
                 "why": "示例项目的评价与建议。",
             }
@@ -57,14 +57,14 @@ class ValidateRepeatHistoryTest(unittest.TestCase):
         return path
 
     def test_repeat_history_is_read_from_daily_knowledge(self) -> None:
-        self.write_analyze(analyze_document(HISTORY_DAY, None))
+        self.write_analyze(analyze_document(HISTORY_DAY))
 
         result = run_cli("validate.py", "--date", DAY, work_dir=self.work, output_dir=self.daily)
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_missing_repeat_history_error_names_daily_knowledge(self) -> None:
-        self.write_analyze(analyze_document("2026-08-30", None))
+        self.write_analyze(analyze_document("2026-08-30"))
 
         result = run_cli("validate.py", "--date", DAY, work_dir=self.work, output_dir=self.daily)
 

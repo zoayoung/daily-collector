@@ -110,25 +110,26 @@ class AnalyzeValidateTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
 
-    def test_repeat_can_omit_new_progress(self) -> None:
+    def test_repeat_with_only_last_seen_is_accepted(self) -> None:
         item = analyzed("owner/repo", repeat={"last_seen": HISTORY_DAY})
 
         result = self.validate(self.write("analyze.json", analyze_document([item])))
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_old_repeat_with_new_progress_is_still_accepted(self) -> None:
+    def test_repeat_with_new_progress_is_rejected(self) -> None:
         item = analyzed(
             "owner/repo",
-            repeat={"last_seen": HISTORY_DAY, "new_progress": "发布了新版本"},
+            repeat={"last_seen": HISTORY_DAY, "new_progress": None},
         )
 
         result = self.validate(self.write("analyze.json", analyze_document([item])))
 
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("new_progress", result.stdout)
 
     def test_repeat_without_last_seen_is_rejected(self) -> None:
-        item = analyzed("owner/repo", repeat={"new_progress": "发布了新版本"})
+        item = analyzed("owner/repo", repeat={})
 
         result = self.validate(self.write("analyze.json", analyze_document([item])))
 
