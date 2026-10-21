@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+uv run ruff check scripts
+uv run python -m compileall -q scripts
+
+for file in .opencode/plugins/*.js; do
+  node --check "$file"
+done
+
+if grep -RIn '\$`' .opencode/plugins; then
+  echo "opencode v2 插件不要使用 Bun 的 \$ shell，改用 node:child_process" >&2
+  exit 1
+fi
+
+uv run python -c "import json, pathlib; [json.loads(p.read_text(encoding='utf-8')) for p in [*pathlib.Path('schemas').glob('*.json'), pathlib.Path('config/score-rules.json'), pathlib.Path('opencode.json')]]"

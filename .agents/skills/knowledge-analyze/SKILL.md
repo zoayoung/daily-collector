@@ -1,6 +1,6 @@
 ---
 name: knowledge-analyze
-description: 知识采集系统「分析」阶段的流程技能。主代理委派 knowledge-analyze 子代理执行当日分析、或打回低分条目要求重写时加载：只做项目内容分析——按 topics.md 打主题标签、做 30 天时间去重、核查新进展、逐条写分析要点与评价，产出 work/YYYY-MM-DD/analyze.json。
+description: 知识采集系统「分析」阶段的流程技能。主代理委派 knowledge-analyze 子代理执行当日分析、或打回低分条目要求重写时加载：只做项目内容分析——按 topics.md 打主题标签、按 spec 的时间窗口去重、核查新进展、逐条写分析要点与评价，产出 work/YYYY-MM-DD/analyze.json。
 allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/topics.md), Read(.scratch/knowledge-daily/spec.md), Read(work/**), Read(output/**), Write(work/**), Edit(work/**), Glob, Grep, WebFetch(domain:github.com), TodoWrite
 ---
 
@@ -24,9 +24,9 @@ allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/topics.md), Read(.
 
 ## 执行步骤
 
-1. **读取**：读 collect.json、spec、topics.md。完成标志：collect.json 可解析，六主题打标签口径已掌握。
+1. **读取**：读 collect.json、spec、topics.md。完成标志：collect.json 可解析，打标签口径已掌握。
 2. **建历史对照**：读 `output/` 下全部 md，得到每个 repo 的上次出现日期。完成标志：output/ 下每个 md 都已扫过。
-3. **打标签与去重**：按 topics.md 为每个 github 条目分配 `themes`（数组，可多主题，无命中为空数组）；30 天窗口内出现过的 repo 须有新进展才保留（判断不了视为无进展），更早历史照常输出并标 `repeat`；剔除数记入 `stats.dropped_recent_duplicates`。完成标志：每条保留/剔除都有依据，`themes` 均非缺失。
+3. **打标签与去重**：按 topics.md 为每个 github 条目分配 `themes`（数组，可多主题，无命中为空数组）；spec 定义的时间窗口内出现过的 repo 须有新进展才保留（判断不了视为无进展），窗口外历史照常输出并标 `repeat`；剔除数记入 `stats.dropped_recent_duplicates`。完成标志：每条保留/剔除都有依据，`themes` 均非缺失。
 4. **写分析要点**：逐条写 `core`（项目做了什么、关键事实与理由）与 `why`（一句评价，附是否跟进/怎么用的建议）。素材补足：仓库描述过短或不明时才抓 README，且只读约定范围；素材补抓总量受 spec 限制，失败用已有字段概括并记 `gaps`。完成标志：每条都有言之有物的 core 与 why。
 5. **组装概览之外的部分**：组装 `stats`、`gaps`。不写 `rank`、不写 `overview`、不做选取——这些属于整理阶段。
 6. **组装落盘**：按「输出契约」自检后写 `work/YYYY-MM-DD/analyze.json`；按模板回复。
@@ -47,7 +47,7 @@ allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/topics.md), Read(.
 
 最终回复：
 
-- 成功：`✅ 分析完成；产物：work/YYYY-MM-DD/analyze.json；GitHub N 条；命中主题 T 个；剔除 30 天内无新进展 D 条；gaps：有/无`
+- 成功：`✅ 分析完成；产物：work/YYYY-MM-DD/analyze.json；GitHub N 条；命中主题 T 个；剔除无新进展 D 条；gaps：有/无`
 - 打回成功：`✅ 分析重写完成；重写 K 条；产物：work/YYYY-MM-DD/analyze.json`
 - 失败：`❌ 分析失败；原因：…；已落盘：无 / work/YYYY-MM-DD/analyze.partial.json；建议：…`
 

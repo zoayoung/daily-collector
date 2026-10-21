@@ -59,7 +59,7 @@
 36. 作为维护者，我希望有校验脚本同时检查采集脚本与两个子代理的产物是否符合设计，以便字段问题在进入下一步前暴露。
 37. 作为维护者，我希望校验失败时把错误清单回传给子代理重跑，以便自动修复而不是人工猜。
 38. 作为维护者，我希望同一阶段连续 3 次校验失败就终止任务，以便不无限重试。
-39. 作为维护者，我希望子代理每次工具调用后自动触发质量评分 hook，以便内容问题立刻可见。
+39. 作为维护者，我希望整理子代理每次写入或编辑 `organize.json` 后自动触发质量评分 hook，以便内容问题立刻可见。
 40. 作为维护者，我希望评分由 5 个固定维度构成（摘要质量 25、技术深度 25、格式规范 20、标签精度 15、空洞词检测 15），以便尺度统一。
 41. 作为读者，我希望评分输出可视化进度条、每维得分与 A/B/C 等级，以便一眼看出短板。
 42. 作为维护者，我希望等级规则固定为 A≥80、B≥60、C<60，以便跨天可比。
@@ -91,13 +91,14 @@
 - 采集异常：未配置 `GITHUB_TOKEN`、搜索 API 失败、候选为空即脚本失败（退出码非 0、不写正式文件）；`star_history` 单次失败记 `gaps` 并把该条记 null。
 - 今日新增 star 口径（沿用）：基线取 `work/**/collect.json` 中**日期早于今日的最近一次**该 repo 的 `stars_total`；仅当基线恰为**上一自然日**时才用于差分（同日重跑不会读到自身产物）。优先级：① 本地差分 `stars_today_source=local_diff`；② 官方兜底 `GET /repos/{owner}/{repo}/stargazers/history`，按 `stars_total` 降序依次兜底，总量 ≤20 次/轮，`stars_today_source=star_history`；③ 都不可得记 null。
 - 排序与选取（沿用）：丢弃 `stars_today=null` 的候选，其余按 `stars_today` 降序取前 15–20；不足 15 按实际数量输出。
-- 认证（必填）：脚本从进程环境或项目根 `.env` 读取 `GITHUB_TOKEN`（兼容 `GH_TOKEN`），进程环境优先；缺失即失败，不退回未认证。`.env` 由脚本自行加载（opencode 不自动注入），`.env` 已被 git 忽略，模板见 `.env.example`。认证后配额：搜索 30 次/分、核心 5000 次/时。
+- 认证（必填，相对原始需求的扩展）：脚本从进程环境或项目根 `.env` 读取 `GITHUB_TOKEN`（兼容 `GH_TOKEN`），进程环境优先；缺失即失败，不退回未认证。`.env` 由脚本自行加载（opencode 不自动注入），`.env` 已被 git 忽略，模板见 `.env.example`。认证后配额：搜索 30 次/分、核心 5000 次/时。
 - 分析阶段：只做主题标签、30 天时间去重、新进展核查、`core`/`why` 分析要点。**不决定入选条数、不写 `rank`/`overview`**。`core`/`why` 为分析要点，不设 100 汉字硬限。
 - 整理阶段：从 analyze 候选中**定稿 15–20 条**（不足按实际），有权剔除但必须计入 `stats.dropped_by_organize` 并在 `gaps` 说明理由；负责 `rank`（按 `stars_today` 降序连续编号）、`overview`、`core` ≤100 汉字（不计英文单词与数字）、`why` 一句评价与建议。
 - 渲染：主代理按固定模板机械填充 `organize.json`，文字与数字照抄、不改写；模板见「编排协议 · 渲染模板」。质量评分摘要一句放标题下。
 - 校验：`schemas/*.schema.json` 是字段唯一来源（spec 只解释语义），`scripts/validate.py` 用 jsonschema + 跨文件语义检查；默认校验当日 `work/` 产物，`--all` 校验最近一个 work 日期目录，`--file` 可单独校验。
 - 校验重试：任一阶段校验失败 → 主代理把错误清单回传给同一子代理（脚本则重跑脚本），最多 3 次尝试；第 3 次仍失败即终止任务，保留产物供诊断。
-- 质量评分：`.opencode/plugins/quality-score.js` 在 `write`/`edit` 命中 `organize.json` 后调用 `scripts/score.py`（Python，确定性启发式），写 `work/YYYY-MM-DD/score.json` 并把评分卡追加到工具结果尾部。规则词表见 `config/score-rules.json`，主题命中复用 `topics.md`。
+- 质量评分：`.opencode/plugins/quality-score.js` 在**子代理会话**的 `write`/`edit` 命中 `organize.json` 后调用 `scripts/score.py`（Python，确定性启发式），写 `work/YYYY-MM-DD/score.json` 并把评分卡追加到工具结果尾部。opencode 插件入口须为 JS，打分逻辑全部在 Python；等级阈值、维度权重、长度档位与词表见 `config/score-rules.json`，主题命中复用 `topics.md`。
+- 需求边界：打回与 3 次终止是原始需求（只要求打分与展示）之外的扩展，用于守质量下限；若需回退，删除本节打回环即可。
 - 打回：`score.json` 中任一条目 <60 即 `pass=false`；主代理带「低分条目 + 五维明细 + 命中空洞词」续派分析（只重写这些条目的 `core`/`why`）→ 整理（只重写这些条目的文字）→ 校验 → 打分。**按条目计次**：同一条目连续 3 次 <60 即终止任务、不写日报，保留全部产物与 `score.json` 的 `attempts[]` 分数轨迹。
 - token 统计：`.opencode/plugins/token-stats.js` 监听 `message.updated`（assistant 已完成消息）按 `sessionID → 根会话 → agent` 聚合，写 `work/YYYY-MM-DD/tokens.json`，同日多轮按 `runs[]` 追加；主代理收尾时读取并输出统计表，不写入日报。
 - 数据与版本控制：`work/`、`output/`、`.venv/`、`__pycache__/` 忽略；`scripts/`、`schemas/`、`config/`、`.opencode/plugins/`、`pyproject.toml`、`uv.lock` 纳入版本控制。
@@ -264,13 +265,13 @@
   },
   "pass": false,
   "attempts": [
-    { "attempt": 1, "scored_at": "YYYY-MM-DD HH:mm", "valid": true, "pass": false, "items": [] }
+    { "attempt": 1, "scored_at": "YYYY-MM-DD HH:mm", "valid": true, "pass": false, "content_hash": "<organize.json 的 sha256>", "items": [] }
   ]
 }
 ```
 
-- `attempts[]` 保留历次打回分数轨迹，每次评分追加一条。
-- 校验不通过时不打分：`valid=false`、`pass=false`、`errors[]` 给出校验错误。
+- `attempts[]` 保留历次打回分数轨迹，每次评分追加一条；`content_hash` 用于识别同一份产物，内容未变时只刷新时间、不新增计次，主代理据此判为无进展、不无限打回。
+- 校验不通过时不打分：`valid=false`、`pass=false`、`errors[]` 给出校验错误，且不计入 `attempts[]`。
 - 等级：A≥80、B≥60、C<60；`pass` 当且仅当所有条目 ≥60。
 
 ### tokens.json（用量产物）

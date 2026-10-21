@@ -4,3 +4,8 @@ version = "0.1.0"
 description = "知识采集系统的采集、校验与质量评分脚本"
 requires-python = ">=3.11"
 dependencies = ["jsonschema>=4.23"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.1",
+]

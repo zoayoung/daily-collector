@@ -1,6 +1,6 @@
 # 知识采集系统
 
-每天产出一份中文知识日报：采集 GitHub 当日趋势项目、按关注主题打标签，分析后写入 `output/YYYY-MM-DD.md`。关注主题定义见 `.scratch/knowledge-daily/topics.md`。
+每天产出一份中文知识日报：采集 GitHub 当日趋势项目、按关注主题打标签，分析、整理后按模板渲染到 `output/YYYY-MM-DD.md`。关注主题定义见 `.scratch/knowledge-daily/topics.md`。
 
 ## 工作流
 
@@ -27,11 +27,13 @@
 
 - `work/YYYY-MM-DD/`：collect / analyze / organize / score / tokens 等中间 json，本地保留（.gitignore）
 - `output/YYYY-MM-DD.md`：知识日报，本地保留（.gitignore）
+- `.scratch/knowledge-daily/requirements/`：原始需求按日期归档（只读）；当前行为只看 spec
 
 ## 脚本与插件
 
 - `uv run python scripts/collect.py|validate.py|score.py`：采集、校验、评分；依赖由 `uv` 管理。
 - `.opencode/plugins/quality-score.js`：写 `organize.json` 后自动校验并打分。
+- 开发检查：首次执行 `git config core.hooksPath .githooks`，之后 pre-commit 会跑 ruff、compileall、`node --check`、JSON 解析与插件 `$` 扫描。
 - `.opencode/plugins/token-stats.js`：聚合每次运行的 token 消耗到 `work/YYYY-MM-DD/tokens.json`。
 
 ## 凭证

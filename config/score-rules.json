@@ -1,5 +1,25 @@
 {
   "grades": { "A": 80, "B": 60 },
+  "dimensions": {
+    "summary": { "length": 10, "facts": 8, "action": 4, "clarity": 3 },
+    "depth": { "terms": 10, "specificity": 8, "advice": 5, "elaboration": 2 },
+    "format": { "fields": 12, "core_length": 4, "why_length": 4 },
+    "tags": { "base": 5, "valid": 3, "evidence": 4, "spread": 3 },
+    "filler": { "max": 15, "per_hit": 5 }
+  },
+  "format_fields": ["full_name", "url", "themes", "rank", "core", "why"],
+  "length": {
+    "summary": {
+      "best": [40, 100],
+      "good": [25, 40],
+      "fair": [[15, 25], [100, 130]],
+      "long_over": 130,
+      "factors": { "good": 0.8, "fair": 0.5, "long": 0.1, "tiny": 0.2 }
+    },
+    "core": [20, 110],
+    "why": [10, 80],
+    "elaboration_min": 40
+  },
   "filler_words": [
     "赋能",
     "重塑",

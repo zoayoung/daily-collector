@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -28,15 +29,6 @@ from _common import (
 )
 from validate import validate_file
 
-DEFAULT_RULES = {
-    "grades": {"A": 80, "B": 60},
-    "filler_words": [],
-    "tech_terms": [],
-    "action_words": [],
-    "advice_words": [],
-    "metric_words": [],
-}
-
 VERSION_RE = re.compile(r"v?\d+\.\d+(?:\.\d+)?")
 METRIC_RE = re.compile(
     r"\d+(?:\.\d+)?\s*(?:ms|毫秒|秒|%|倍|QPS|TPS|MB|GB|ns|us|核)"
@@ -51,13 +43,27 @@ DIMENSION_LABELS = {
 }
 
 
+REQUIRED_RULE_KEYS = (
+    "grades",
+    "dimensions",
+    "format_fields",
+    "length",
+    "filler_words",
+    "tech_terms",
+    "action_words",
+    "advice_words",
+)
+
+
 def load_rules() -> dict:
     path = CONFIG_DIR / "score-rules.json"
-    rules = dict(DEFAULT_RULES)
-    if path.exists():
-        raw = read_json(path)
-        for key, value in raw.items():
-            rules[key] = value
+    try:
+        rules = read_json(path)
+    except FileNotFoundError as error:
+        raise SystemExit(f"❌ 质量评分失败：找不到评分规则 {path.as_posix()}") from error
+    missing = [key for key in REQUIRED_RULE_KEYS if key not in rules]
+    if missing:
+        raise SystemExit(f"❌ 质量评分失败：{path.as_posix()} 缺少 {', '.join(missing)}")
     return rules
 
 
@@ -71,47 +77,68 @@ def _hits(text: str, terms: list[str]) -> list[str]:
 
 
 def _score_summary(core: str, rules: dict) -> dict:
+    weights = rules["dimensions"]["summary"]
+    bands = rules["length"]["summary"]
+    factors = bands["factors"]
+    length_max = weights["length"]
     length = cjk_count(core)
-    if 40 <= length <= 100:
-        length_score = 10
-    elif 25 <= length < 40:
-        length_score = 8
-    elif 15 <= length < 25 or 100 < length <= 130:
-        length_score = 5
-    elif length > 130:
-        length_score = 1
+    best_low, best_high = bands["best"]
+    good_low, good_high = bands["good"]
+    fair_low, fair_high = bands["fair"][0]
+    long_low, long_high = bands["fair"][1]
+    if best_low <= length <= best_high:
+        length_score = length_max
+    elif good_low <= length < good_high:
+        length_score = round(length_max * factors["good"])
+    elif fair_low <= length < fair_high or long_low < length <= long_high:
+        length_score = round(length_max * factors["fair"])
+    elif length > bands["long_over"]:
+        length_score = round(length_max * factors["long"])
     elif length > 0:
-        length_score = 2
+        length_score = round(length_max * factors["tiny"])
     else:
         length_score = 0
 
     facts = min(
-        8,
+        weights["facts"],
         len(VERSION_RE.findall(core))
         + len(METRIC_RE.findall(core))
         + len(NUMBER_RE.findall(core)),
     )
-    action = 4 if _hits(core, rules["action_words"]) else 0
+    action = weights["action"] if _hits(core, rules["action_words"]) else 0
     stripped = core.rstrip()
-    clarity = 3 if stripped.endswith(("。", "！", "？")) else (1 if "。" in core else 0)
+    if stripped.endswith(("。", "！", "？")):
+        clarity = weights["clarity"]
+    elif "。" in core:
+        clarity = max(1, round(weights["clarity"] / 3))
+    else:
+        clarity = 0
 
     notes = [f"汉字数 {length}", f"事实信号 {facts} 处"]
     if not action:
         notes.append("未见动作动词")
     return {
         "score": length_score + facts + action + clarity,
-        "max": 25,
+        "max": sum(weights.values()),
         "notes": notes,
     }
 
 
 def _score_depth(core: str, why: str, rules: dict) -> dict:
+    weights = rules["dimensions"]["depth"]
     text = f"{core} {why}"
     terms = _hits(text, rules["tech_terms"])
-    term_score = min(10, 2 * len(terms))
-    specificity = min(8, 2 * len(VERSION_RE.findall(text)) + 2 * len(METRIC_RE.findall(text)))
-    advice = 5 if _hits(why, rules["advice_words"]) else 0
-    elaboration = 2 if cjk_count(core) >= 40 else 0
+    term_score = min(weights["terms"], 2 * len(terms))
+    specificity = min(
+        weights["specificity"],
+        2 * len(VERSION_RE.findall(text)) + 2 * len(METRIC_RE.findall(text)),
+    )
+    advice = weights["advice"] if _hits(why, rules["advice_words"]) else 0
+    elaboration = (
+        weights["elaboration"]
+        if cjk_count(core) >= rules["length"]["elaboration_min"]
+        else 0
+    )
 
     notes = []
     if terms:
@@ -122,44 +149,61 @@ def _score_depth(core: str, why: str, rules: dict) -> dict:
         notes.append("why 未给出跟进建议")
     return {
         "score": term_score + specificity + advice + elaboration,
-        "max": 25,
+        "max": sum(weights.values()),
         "notes": notes,
     }
 
 
-def _score_format(item: dict) -> dict:
-    required = ["full_name", "url", "themes", "rank", "core", "why"]
+def _score_format(item: dict, rules: dict) -> dict:
+    weights = rules["dimensions"]["format"]
+    required = rules["format_fields"]
     present = sum(1 for key in required if item.get(key) not in (None, "", []))
-    field_score = present * 2
+    field_score = round(weights["fields"] * present / len(required))
 
+    core_low, core_high = rules["length"]["core"]
     core_length = cjk_count(item.get("core"))
-    length_score = 4 if 20 <= core_length <= 110 else 2
+    length_score = (
+        weights["core_length"]
+        if core_low <= core_length <= core_high
+        else round(weights["core_length"] / 2)
+    )
+    why_low, why_high = rules["length"]["why"]
     why_length = cjk_count(item.get("why"))
-    why_score = 4 if 10 <= why_length <= 80 else 2
+    why_score = (
+        weights["why_length"]
+        if why_low <= why_length <= why_high
+        else round(weights["why_length"] / 2)
+    )
 
     notes = [f"字段 {present}/{len(required)}", f"why 汉字数 {why_length}"]
     return {
         "score": field_score + length_score + why_score,
-        "max": 20,
+        "max": sum(weights.values()),
         "notes": notes,
     }
 
 
 def _score_tags(item: dict, topics: list[dict], rules: dict) -> dict:
+    weights = rules["dimensions"]["tags"]
     themes = item.get("themes") or []
     names = {topic["name"] for topic in topics}
     text = " ".join(
         str(item.get(key) or "") for key in ("full_name", "description", "core", "why")
     )
 
-    base = 5 if themes else 0
-    valid = 3 if themes and all(theme in names for theme in themes) else 0
+    base = weights["base"] if themes else 0
+    valid = weights["valid"] if themes and all(theme in names for theme in themes) else 0
     evidence = 0
     for topic in topics:
         if topic["name"] in themes and _hits(text, topic["keywords"]):
-            evidence = 4
+            evidence = weights["evidence"]
             break
-    spread = 3 if len(themes) <= 3 else 1
+    if not themes:
+        spread = 0
+    elif len(themes) <= 3:
+        spread = weights["spread"]
+    else:
+        spread = max(1, round(weights["spread"] / 3))
 
     notes = [f"主题 {len(themes)} 个"]
     if not themes:
@@ -168,16 +212,17 @@ def _score_tags(item: dict, topics: list[dict], rules: dict) -> dict:
         notes.append("主题缺关键词证据")
     return {
         "score": base + valid + evidence + spread,
-        "max": 15,
+        "max": sum(weights.values()),
         "notes": notes,
     }
 
 
 def _score_filler(core: str, why: str, rules: dict) -> dict:
+    weights = rules["dimensions"]["filler"]
     found = _hits(f"{core} {why}", rules["filler_words"])
-    score = max(0, 15 - 5 * len(found))
+    score = max(0, weights["max"] - weights["per_hit"] * len(found))
     notes = [f"命中空洞词：{'、'.join(found)}"] if found else ["未命中空洞词"]
-    return {"score": score, "max": 15, "notes": notes, "hits": found}
+    return {"score": score, "max": weights["max"], "notes": notes, "hits": found}
 
 
 def score_item(item: dict, topics: list[dict], rules: dict) -> dict:
@@ -186,7 +231,7 @@ def score_item(item: dict, topics: list[dict], rules: dict) -> dict:
     dimensions = {
         "summary": _score_summary(core, rules),
         "depth": _score_depth(core, why, rules),
-        "format": _score_format(item),
+        "format": _score_format(item, rules),
         "tags": _score_tags(item, topics, rules),
         "filler": _score_filler(core, why, rules),
     }
@@ -221,14 +266,22 @@ def render_card(result: dict) -> str:
 
     summary = result["summary"]
     grades = summary["grades"]
-    verdict = "通过" if result["pass"] else f"未通过（{len(summary['below_min'])} 条 <60）"
+    verdict = "通过" if result["pass"] else f"未通过（{len(summary['below_min'])} 条未达标）"
     lines = [
         f"📊 质量评分 · {result['date']} 第 {result['attempt']} 次 · 均分 {summary['average']}",
         f"等级分布：A {grades['A']} / B {grades['B']} / C {grades['C']} · 结论：{verdict}",
         "─" * 32,
     ]
+    max_total = (
+        sum(dimension["max"] for dimension in result["items"][0]["dimensions"].values())
+        if result["items"]
+        else 0
+    )
     for item in result["items"]:
-        lines.append(f"{item['rank']}. {item['full_name']} · {item['grade']} · {item['total']}/100")
+        lines.append(
+            f"{item['rank']}. {item['full_name']} · {item['grade']} · "
+            f"{item['total']}/{max_total}"
+        )
         for key, dimension in item["dimensions"].items():
             lines.append(
                 f"   {DIMENSION_LABELS[key]}  {_bar(dimension['score'], dimension['max'])} "
@@ -260,7 +313,9 @@ def evaluate(path: Path, rules: dict, topics: list[dict]) -> dict:
     grades = {"A": 0, "B": 0, "C": 0}
     for item in items:
         grades[item["grade"]] += 1
-    below = [item["full_name"] for item in items if item["grade"] == "C"]
+    below = [
+        item["full_name"] for item in items if item["total"] < rules["grades"]["B"]
+    ]
     average = round(sum(item["total"] for item in items) / len(items), 1) if items else 0.0
     return {
         "date": data.get("date") or day,
@@ -280,7 +335,26 @@ def evaluate(path: Path, rules: dict, topics: list[dict]) -> dict:
     }
 
 
+def _attempt_entry(attempt: int, result: dict, content_hash: str) -> dict:
+    return {
+        "attempt": attempt,
+        "scored_at": result.get("scored_at") or stamp(),
+        "valid": result["valid"],
+        "pass": result["pass"],
+        "content_hash": content_hash,
+        "items": [
+            {
+                "full_name": item["full_name"],
+                "total": item["total"],
+                "grade": item["grade"],
+            }
+            for item in result.get("items", [])
+        ],
+    }
+
+
 def write_score(path: Path, result: dict) -> Path:
+    """写 score.json；同一份得分重复触发时只刷新时间，不打回计次。"""
     score_file = path.parent / "score.json"
     attempts: list[dict] = []
     if score_file.exists():
@@ -291,25 +365,23 @@ def write_score(path: Path, result: dict) -> Path:
         except (OSError, ValueError):
             attempts = []
 
-    attempt = len(attempts) + 1
+    content_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    last = attempts[-1] if attempts else None
+    if not result["valid"]:
+        attempt = len(attempts)
+    else:
+        entry = _attempt_entry(len(attempts) + 1, result, content_hash)
+        if last and last.get("valid") and last.get("content_hash") == content_hash:
+            attempt = last.get("attempt", len(attempts))
+            entry["attempt"] = attempt
+            attempts = attempts[:-1] + [entry]
+        else:
+            attempt = entry["attempt"]
+            attempts = attempts + [entry]
+
     result["attempt"] = attempt
     result["file"] = path.as_posix()
-    result["attempts"] = attempts + [
-        {
-            "attempt": attempt,
-            "scored_at": result.get("scored_at") or stamp(),
-            "valid": result["valid"],
-            "pass": result["pass"],
-            "items": [
-                {
-                    "full_name": item["full_name"],
-                    "total": item["total"],
-                    "grade": item["grade"],
-                }
-                for item in result.get("items", [])
-            ],
-        }
-    ]
+    result["attempts"] = attempts
     write_json(score_file, result)
     return score_file
 
