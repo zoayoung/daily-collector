@@ -2,7 +2,7 @@
 
 **Feature:** knowledge-daily
 **Status:** ready-for-agent
-**Updated:** 2026-10-22
+**Updated:** 2026-10-23
 
 ## 问题陈述
 
@@ -12,13 +12,13 @@
 
 ## 方案
 
-- 用户说「开始今天的知识采集」，一次跑完 **采集 → 分析 → 整理 → 渲染** 四段，并汇报 token 成本。本地与 GitHub Actions 共用同一套步骤。
+- 用户说「开始今天的知识采集」，一次跑完 **采集 → 分析 → 整理 → 渲染** 四段，并汇报 token 成本。本地与 GitHub Actions 共用同一套步骤；CI 定时任务以「开始知识采集；发布日 YYYY-MM-DD；数据归属 YYYY-MM-DD」触发，发布日为运行日，数据归属为前一日（UTC+8）。
 - **采集（Python 脚本，必须使用采集凭证）**：按多个 star 区间分别搜索、按 `full_name` 去重得到约 800 个唯一候选；先用已发布日报过滤 30 天窗口内的项目，再逐个算出「今日新增 star」，按它降序写入前 50 条到 `collect.json`。
 - **分析（子代理）**：只做内容分析——自由打标签（不受固定主题表约束）、给 30 天外再次出现的项目标 `repeat.last_seen`、写分析要点与评价，写 `analyze.json`；不再自行剔除 30 天内项目。
 - **整理（子代理）**：职责分离后的定稿者——从分析结果中定稿 10–15 条、润色为成稿、定排序与概览，写 `organize.json`；批量剔除时记数并按批次说明理由。
 - **渲染（主代理）**：按固定模板把 `organize.json` 机械填充为 `daily-knowledge/YYYY-MM-DD.md`，不改写文字；每条附总 star、今日新增 star 与质量评分。
 - **质量与成本**：`schemas/` 是字段唯一来源，`scripts/validate.py` 做契约校验与 30 天窗口硬校验；`.opencode/plugins/` 的 hook 在整理产物落盘后调 `scripts/score.py` 做 5 维打分并写 `score.json`，低于 60 分打回重来；token 插件聚合消耗，同时写 `daily-knowledge/tokens/YYYY-MM-DD.md` 供人阅读。
-- **自动发布（GitHub Actions）**：每天 14:00 UTC（22:00 UTC+8）无头运行同一套流水线，把日报、token 报告与每日 `collect.json` 提交回公开仓库 `zoayoung/daily-collector` 的 `main` 分支。
+- **自动发布（GitHub Actions）**：每天 00:00 UTC（08:00 UTC+8）无头运行同一套流水线，发布当天（UTC+8）的日报、数据归属于前一日，把日报、token 报告与每日 `collect.json` 提交回公开仓库 `zoayoung/daily-collector` 的 `main` 分支。
 - 中间产物按天落在 `work/YYYY-MM-DD/`（仅每日 `collect.json` 进 git，其余本地保留）。
 
 ## 用户故事
@@ -27,7 +27,7 @@
 2. 作为用户，我希望一次触发自动跑完采集→分析→整理→渲染，以便中途无需人工介入。
 3. 作为用户，我希望失败后说「继续知识采集」从断点续跑，以便不浪费已完成的阶段。
 4. 作为用户，我希望同日重跑时先收到提示并三选一（重新采集并覆盖 / 仅重写日报 / 取消），以便按需刷新数据或只修补日报。
-5. 作为用户，我希望日报按本地日期（UTC+8）归属，以便与我的一天对齐。
+5. 作为用户，我希望日报文件名按发布日（UTC+8）归属；定时任务的数据归属为发布日前一天，并在报告内部标注，以便早上读到刚结束那天的完整数据。
 6. 作为读者，我希望采集只依赖 GitHub 一个数据源，以便口径单一、维护简单。
 7. 作为维护者，我希望采集由 Python 脚本完成而不是子代理交互抓取，以便口径可复现、token 成本可预期。
 8. 作为维护者，我希望采集脚本必须携带 `GITHUB_TOKEN` 认证运行，以便配额稳定、口径可预期。
@@ -100,10 +100,10 @@
 75. 作为读者，我希望 token 报告按 run 与代理拆分并给出当日合计，以便定位成本大头。
 76. 作为维护者，我希望 token 报告在每次运行后自动生成，以便不靠手工整理。
 77. 作为维护者，我希望 token 报告随日报一起提交，以便成本历史与产出放在同一处。
-78. 作为维护者，我希望流水线每天 08:00（UTC+8）由 GitHub Actions 自动运行，以便不需要每天手工触发。
+78. 作为维护者，我希望流水线每天 08:00（UTC+8）由 GitHub Actions 自动运行并发布当天日报（数据归属前一日），以便不需要每天手工触发。
 79. 作为维护者，我希望同一套流水线仍能在本地手动触发，以便调试与补跑。
 80. 作为维护者，我希望 CI 复用采集、分析、整理、渲染四段，以便线上与本地行为不分叉。
-81. 作为维护者，我希望 CI 在当日日报已存在时跳过，以便定时任务幂等。
+81. 作为维护者，我希望 CI 在发布日日报已存在时跳过，以便定时任务幂等。
 82. 作为维护者，我希望手动触发时可以强制覆盖当天，以便刷新数据或修补日报。
 83. 作为维护者，我希望 CI 先跑单元测试再调用模型，以便契约问题不消耗 token。
 84. 作为维护者，我希望 CI 失败时上传 `work/` 产物，以便下载现场排查。
@@ -144,21 +144,21 @@
 - 概览口径：整理阶段把自由标签合并为不超过 6 组，再写 `overview.themes`；0 命中省略。
 - 日报展示：每条元信息行固定为「Star：总数（今日 +增量）· 评分：总分 / 等级」；评分来自当日 `score.json`，按 `rank` 与 `full_name` 同时匹配；缺失处理与标题下行见「编排协议 · 渲染模板」。
 - 产物目录：日报与 token 报告落在 `daily-knowledge/`，日报文件名为 `YYYY-MM-DD.md`；历史日报是该目录下的去重依据。默认目录可用 `KNOWLEDGE_OUTPUT_DIR` 覆盖。
-- token 报告：`.opencode/plugins/token-stats.js` 在刷新 `work/YYYY-MM-DD/tokens.json` 后，同时写 `daily-knowledge/tokens/YYYY-MM-DD.md`；内容按 run、按代理列出与 `tokens.json` 相同的字段，并给出当日合计。
-- 自动运行：GitHub Actions 每日 14:00 UTC（22:00 UTC+8）触发（此时当天 star 增量已产生，过早运行会得到全 0 增量）；`ubuntu-latest`；步骤为检出 → 安装 uv 与 Node → 同步依赖 → 跑单元测试 → 安装锁定版本的 opencode → 无头执行 `opencode run --auto "开始今天的知识采集"` → 校验产物 → 提交回写。
+- token 报告：`.opencode/plugins/token-stats.js` 在刷新 `work/YYYY-MM-DD/tokens.json` 后，同时写 `daily-knowledge/tokens/YYYY-MM-DD.md`；文件名取发布日，内部标「统计窗口：昨日到今日」。内容按 run、按代理列出与 `tokens.json` 相同的字段，并给出当日合计。日期取 `KNOWLEDGE_DATE`，统计窗口依据 `KNOWLEDGE_GAIN_DATE`，未设置时取本地今天。
+- 自动运行：GitHub Actions 每日 00:00 UTC（08:00 UTC+8）触发，发布日为运行日，数据归属为运行日前一天（UTC+8）；`ubuntu-latest`；步骤为检出 → 计算发布日与数据归属日 → 安装 uv 与 Node → 同步依赖 → 跑单元测试 → 安装锁定版本的 opencode → 无头执行 `opencode run --auto "开始知识采集；发布日 <发布日>；数据归属 <数据归属日>"` → 校验产物 → 提交回写。
 - CI 参数：opencode 以 `@opencode/cli@2.0.26` 安装（`opencode-ai` 是 1.x 包，勿混用），所有代理统一使用 `oc-go/deepseek-v4.1-flash`；仓库内 `opencode.json` 固定 provider `oc-go` 与默认模型，`apiKey` 用 `{env:OC_GO_API_KEY}` 占位。
 - CI 凭证：模型密钥只放在仓库 Secret `OC_GO_API_KEY`；采集与回写共用 Actions 自带的 `GITHUB_TOKEN`（`permissions.contents: write`），不额外配置 Personal Access Token。
-- CI 幂等：启动 opencode 前检查当日 `daily-knowledge/<日期>.md`；存在且 `force=false` 则跳过并退出 0，`force=true` 按「重新采集并覆盖」执行。
-- CI 失败：不自动重试；把 `work/<日期>/` 上传为 artifact，不提交半成品，最后一份已发布日报保持原样。
+- CI 幂等：启动 opencode 前检查发布日 `daily-knowledge/<发布日>.md`；存在且 `force=false` 则跳过并退出 0，`force=true` 按「重新采集并覆盖」执行。定时任务的发布日为运行日、数据归属为前一天；手动 dispatch 的发布日与数据归属都是当天。
+- CI 失败：不自动重试；把 `work/<发布日>/` 上传为 artifact，不提交半成品，最后一份已发布日报保持原样。
 - CI 并发：同一 workflow 使用单一并发组，避免定时与手动触发重叠。
 - CI 冒烟（交付门槛）：先在临时分支 `ci-smoke` 推送并 `workflow_dispatch` 真实跑通，覆盖 `force=true` 全流程与 `force=false` 跳过两种情形，再合并 `main`；不以 `act` 或本地 runner 代替真实 Actions。
 - 发布仓库：`https://github.com/zoayoung/daily-collector`（public），默认分支 `main`；本地用 `~/.ssh/git` 推送；仓库包含历史日报与现有测试。
-- 采集脚本：`scripts/collect.py`，由主代理用 `uv run python scripts/collect.py --date YYYY-MM-DD` 执行；`--dry-run` 打印 JSON 不落盘。脚本承担多查询候选池、30 天过滤、今日新增 star、排序选取、`gaps` 与 `stats` 全流程，产物符合 `schemas/collect.schema.json`。
+- 采集脚本：`scripts/collect.py`，由主代理用 `uv run python scripts/collect.py --date <发布日> --gain-date <数据归属日>` 执行；`--gain-date` 默认取 `KNOWLEDGE_GAIN_DATE`，再退回 `--date`；未给 `--date` 时依次取 `KNOWLEDGE_DATE` 与本地今天；`--dry-run` 打印 JSON 不落盘。脚本承担多查询候选池、30 天过滤、数据归属日新增 star、排序选取、`gaps` 与 `stats` 全流程，产物符合 `schemas/collect.schema.json`。
 - 候选池口径：按 4 个 star 区间（`100..500`、`500..2000`、`2000..10000`、`>10000`）分别搜索，每个区间 `per_page=100`、最多 2 页（第一页不足 100 条则不再翻页）；结果按 `full_name` 大小写不敏感去重，保留首次出现的原始大小写，唯一候选约 800 个。不加创建时间约束：老项目只要今日快速上升，同样是有效候选。
-- 30 天重复窗口：以 `daily-knowledge/*.md` 中已发布的项目为准（读取 `### N. owner/repo` 标题行，大小写不敏感），窗口为 `[今天-30, 昨天]`，**不含今天**；窗口内出现过的项目零例外剔除。同日重跑不把当天已发布内容当历史。
+- 30 天重复窗口：以 `daily-knowledge/*.md` 中已发布的项目为准（读取 `### N. owner/repo` 标题行，大小写不敏感），窗口为 `[发布日-30, 发布日-1]`，**不含发布日**；窗口内出现过的项目零例外剔除。同日重跑不把发布日当天已发布内容当历史。
 - 采集过滤与计数：候选先去重，再按 30 天窗口剔除，剩余为 `eligible`；`dropped_recent_duplicates` 记录被剔除数。`collect.json` 新增可选 `stats: { candidates, eligible, dropped_recent_duplicates }`，旧产物无此字段仍有效。
 - 采集异常：未配置 `GITHUB_TOKEN`、所有搜索均失败、过滤后候选为空即脚本失败（退出码非 0、不写正式文件）；`star_history` 单次失败记 `gaps` 并把该条记 null。
-- 今日新增 star 口径：基线取 `work/**/collect.json` 中**日期早于今日的最近一次**该 repo 的 `stars_total`；仅当基线恰为**上一自然日**时才用于差分（同日重跑不会读到自身产物）。优先级：① 本地差分 `stars_today_source=local_diff`；② 官方兜底 `GET /repos/{owner}/{repo}/stargazers/history`，按 `stars_total` 降序依次兜底，总量 ≤100 次/轮，`stars_today_source=star_history`；③ 都不可得记 null。
+- 新增 star 口径：基线取 `work/**/collect.json` 中**日期早于发布日的最近一次**该 repo 的 `stars_total`；仅当基线恰为**发布日的上一自然日**时才用于差分（同日重跑不会读到自身产物）。优先级：① 本地差分 `stars_today_source=local_diff`；② 官方兜底 `GET /repos/{owner}/{repo}/stargazers/history`，按**数据归属日**查、按 `stars_total` 降序依次兜底，总量 ≤100 次/轮，`stars_today_source=star_history`；③ 都不可得记 null。定时任务在 08:00 取数据归属日为发布日前一天，使本地差分与 star 历史都覆盖同一个已结束的 24 小时。
 - 排序与选取：在 `eligible` 中丢弃 `stars_today=null` 的候选，其余按 `stars_today` 降序取前 50；不足 50 按实际数量输出，不足 10 在 `gaps` 说明。
 - 认证（必填）：脚本从进程环境或项目根 `.env` 读取 `GITHUB_TOKEN`（兼容 `GH_TOKEN`），进程环境优先；缺失即失败，不退回未认证。`.env` 由脚本自行加载（opencode 不自动注入），`.env` 已被 git 忽略，模板见 `.env.example`。认证后配额：搜索 30 次/分、核心 5000 次/时。
 - 分析阶段：为 `collect.json` 的全部条目（通常 50 条）做自由标签与 `core`/`why` 分析要点；只给 30 天外再次出现的项目写 `repeat.last_seen`，**不再剔除 30 天内项目**。**不决定入选条数、不写 `rank`/`overview`**。`core`/`why` 为分析要点，不设 100 汉字硬限。
@@ -391,7 +391,9 @@
 
 ### 阶段与命令
 
-1. **采集**：`uv run python scripts/collect.py --date <日期>` → `validate.py --file work/<日期>/collect.json`。
+下文 `<日期>` 均指发布日，`<数据归属日>` 指统计窗口日期：本地与手动触发两者都取今天；CI 定时任务的发布日为运行日，数据归属日为运行日前一天。
+
+1. **采集**：`uv run python scripts/collect.py --date <日期> --gain-date <数据归属日>` → `validate.py --file work/<日期>/collect.json`。
 2. **分析**：Task 委派 `knowledge-analyze` → `validate.py --file work/<日期>/analyze.json`。
 3. **整理**：Task 委派 `knowledge-organize` → `validate.py --file work/<日期>/organize.json` → 读 `score.json` 判定是否打回。
 4. **渲染**：主代理按模板写 `daily-knowledge/<日期>.md`；token 插件已生成 `daily-knowledge/tokens/<日期>.md`。
@@ -424,6 +426,7 @@
 ```markdown
 # 知识日报 · YYYY-MM-DD
 
+> 统计窗口：昨日到今日（UTC+8）
 > 质量评分：均分 X · A a / B b / C c
 
 ## 今日概览
@@ -450,6 +453,7 @@
 - 标题下均分行仅在 `score.json` 存在、可解析、`valid=true` 且 `summary.average`、`summary.grades` 齐全时输出；均分照抄 `summary.average`，A/B/C 取 `summary.grades`。
 - `score.json` 缺失、不可解析、`valid=false` 或 `summary` 不可用时，标题下均分行与所有逐条评分一起省略，并在汇报中说明原因。
 - 无 `repeat` 时省略「🔁 重复」一行。
+- 标题日期取发布日；「统计窗口」行固定为「昨日到今日（UTC+8）」，仅当数据归属日与发布日不同时输出；正文中的「今日」均指数据归属日。
 - 除模板占位符外不增删段落，不改写任何文字与数字。
 
 ### token 汇报（收尾）
@@ -475,24 +479,24 @@
 | 有 analyze.json、无 organize.json | 从整理开始 |
 | 有 organize.json、无 score.json | 重新打分后继续 |
 | score.json 存在且 pass=false（未耗尽 3 次） | 从打回开始 |
-| score.json pass=true、无当日 daily-knowledge | 从渲染开始 |
-| 当日 daily-knowledge 已存在 | 本地：询问三选一；CI：`force=false` 跳过，`force=true` 覆盖 |
+| score.json pass=true、无发布日 daily-knowledge | 从渲染开始 |
+| 发布日 daily-knowledge 已存在 | 本地：询问三选一；CI：`force=false` 跳过，`force=true` 覆盖 |
 
 不重跑已完成阶段。
 
-### 同日重跑（当日 daily-knowledge 已存在）
+### 同日重跑（发布日 daily-knowledge 已存在）
 
 本地由主代理提示并让用户三选一，默认第一项；CI 在启动 opencode 前判断：`force=false` 直接跳过并退出 0，`force=true` 选第一项。
 
-1. **重新采集并覆盖**：重跑采集 → 分析 → 整理 → 渲染（当日 work 数据被新数据覆盖，token 历史保留）。
-2. **仅重写日报**：保留 work 当日数据与评分，只重渲染 `daily-knowledge/`。
+1. **重新采集并覆盖**：重跑采集 → 分析 → 整理 → 渲染（发布日 work 数据被新数据覆盖，token 历史保留）。
+2. **仅重写日报**：保留 work 发布日数据与评分，只重渲染 `daily-knowledge/`。
 3. **取消**：什么都不做。
 
 ### 失败处理与恢复
 
 - 子代理失败：本地由主代理向用户报告原因与建议后停止；用户说「继续知识采集」时按断点续跑。CI 直接失败、上传 artifact，不提交半成品、不重试。
 - 单阶段手动触发（`@knowledge-analyze` 等）允许用于调试；前置产物缺失时该阶段应以前置缺失失败，而非自动重跑前段。
-- 强制重跑某阶段：删除 `work/YYYY-MM-DD/` 下对应产物文件（或 `daily-knowledge/` 当日文件）后重新触发；打回计次存于 `score.json`，删除它即清零。
+- 强制重跑某阶段：删除 `work/YYYY-MM-DD/` 下对应产物文件（或 `daily-knowledge/` 发布日文件）后重新触发；打回计次存于 `score.json`，删除它即清零。
 
 ## 测试决策
 
@@ -574,7 +578,8 @@
 
 - 标签由分析阶段自由生成；若将来需要引导，在技能正文里加「标签建议」，不恢复白名单。
 - 30 天重复窗口是硬规则：窗口内零例外，窗口外才标 `🔁`；判断依据只看已发布日报，不看未发布的采集产物。
-- 自动运行配置：在 GitHub 仓库 `Settings → Secrets and variables → Actions` 添加 `OC_GO_API_KEY`；定时为 `0 14 * * *` UTC（22:00 UTC+8，此时当日 star 增量已产生）；手动 dispatch 的 `force` 用于覆盖当天。
+- 自动运行配置：在 GitHub 仓库 `Settings → Secrets and variables → Actions` 添加 `OC_GO_API_KEY`；定时为 `0 0 * * *` UTC（08:00 UTC+8，发布当天日报，数据归属前一日）；手动 dispatch 的 `force` 用于覆盖当天。
+- 定时任务的发布日通过 `KNOWLEDGE_DATE`、数据归属日通过 `KNOWLEDGE_GAIN_DATE` 贯穿工作流、采集脚本与 token 插件；手动触发与本地运行不设置这两个变量，两者都取本地今天。
 - 本地推送使用 `~/.ssh/git`；CI 使用自带 `GITHUB_TOKEN`，不需要 Personal Access Token。
 - 本 spec 落在 local markdown tracker：`.scratch/knowledge-daily/spec.md`；tracker 配置见 `docs/agents/issue-tracker.md`。
 - 术语见根目录 `GLOSSARY.md`（候选集 / 入榜集 / 定稿集 / 重复窗口）；严格去重与扩容候选池的取舍见 `docs/adr/0005-严格去重与扩容候选池.md`。

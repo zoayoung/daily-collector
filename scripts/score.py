@@ -382,7 +382,7 @@ def write_score(path: Path, result: dict) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser(description="给整理产物打分并写 score.json")
     parser.add_argument("--file", help="organize.json 路径")
-    parser.add_argument("--date", default=today(), help="归属日期（未给 --file 时使用）")
+    parser.add_argument("--date", default=today(), help="发布日（未给 --file 时使用）")
     parser.add_argument("--json", action="store_true", help="以 JSON 输出（含卡片文本）")
     parser.add_argument("--no-write", action="store_true", help="不写 score.json")
     args = parser.parse_args()

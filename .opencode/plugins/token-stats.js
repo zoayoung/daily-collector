@@ -18,6 +18,16 @@ function localDate(timestamp) {
   return new Date(timestamp + OFFSET_MS).toISOString().slice(0, 10)
 }
 
+function knowledgeDate() {
+  const override = process.env.KNOWLEDGE_DATE
+  return /^\d{4}-\d{2}-\d{2}$/.test(override ?? "") ? override : localDate(Date.now())
+}
+
+function gainDate() {
+  const override = process.env.KNOWLEDGE_GAIN_DATE
+  return /^\d{4}-\d{2}-\d{2}$/.test(override ?? "") ? override : knowledgeDate()
+}
+
 function localStamp(timestamp) {
   const date = new Date(timestamp + OFFSET_MS)
   const pad = (value) => String(value).padStart(2, "0")
@@ -68,7 +78,8 @@ function sumRuns(runs) {
   return total
 }
 
-function renderReport(date, runs) {
+function renderReport(date, gainDay, runs) {
+  const attribution = gainDay === date ? [] : ["> 统计窗口：昨日到今日（UTC+8）"]
   const sections = runs.map((run, index) => {
     const rows = orderedAgents(run.agents).map((agent) => tableRow(run.agents[agent], agent))
     if (run.total) rows.push(tableRow(run.total, "合计"))
@@ -89,15 +100,15 @@ function renderReport(date, runs) {
     tableRow(sumRuns(runs)),
   ].join("\n")
 
-  return [`# Token 统计 · ${date}`, ...sections, daily].join("\n\n") + "\n"
+  return [`# Token 统计 · ${date}`, ...attribution, ...sections, daily].join("\n\n") + "\n"
 }
 
-async function writeReport(root, date, runs) {
+async function writeReport(root, date, gainDay, runs) {
   if (!Array.isArray(runs) || runs.length === 0) return
   const file = path.join(root, "daily-knowledge", "tokens", `${date}.md`)
   const temp = tempPath(file)
   await fs.mkdir(path.dirname(file), { recursive: true })
-  await fs.writeFile(temp, renderReport(date, runs), "utf8")
+  await fs.writeFile(temp, renderReport(date, gainDay, runs), "utf8")
   await fs.rename(temp, file)
 }
 
@@ -234,7 +245,8 @@ export default Plugin.define({
         }
       }
 
-      const day = localDate(Date.now())
+      const day = knowledgeDate()
+      const gainDay = gainDate()
       const file = path.join(root, "work", day, "tokens.json")
       let existing = { date: day, runs: [] }
       try {
@@ -262,7 +274,7 @@ export default Plugin.define({
       await fs.rename(temp, file)
 
       try {
-        await writeReport(root, day, existing.runs)
+        await writeReport(root, day, gainDay, existing.runs)
       } catch {
         // tokens.json 已落盘，md 失败不阻断后续事件
       }

@@ -131,7 +131,7 @@ class CandidatePoolTest(unittest.TestCase):
             ["owner/big", "owner/small"],
         )
         self.assertEqual([entry["stars_today"] for entry in data["github"]], [0, 0])
-        self.assertTrue(any("今日增量全为 0" in gap for gap in data["gaps"]))
+        self.assertTrue(any("数据归属日增量全为 0" in gap for gap in data["gaps"]))
         self.assertFalse(any("有增量" in gap for gap in data["gaps"]))
 
     def test_picks_by_different_local_diff_gains_in_descending_order(self) -> None:

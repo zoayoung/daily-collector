@@ -141,9 +141,13 @@ class FixtureServer:
         self._server.server_close()
 
 
-def render_report(organized: dict, score: dict | None = None) -> str:
+def render_report(
+    organized: dict, score: dict | None = None, gain_date: str | None = None
+) -> str:
     """按 spec「渲染模板」机械填充；只做排版，不改写文字与数字。"""
     lines = [f"# 知识日报 · {organized['date']}", ""]
+    if gain_date and gain_date != organized["date"]:
+        lines.extend(["> 统计窗口：昨日到今日（UTC+8）", ""])
     summary = (score or {}).get("summary") if score and score.get("valid") else None
     if summary and summary.get("average") is not None and summary.get("grades"):
         grades = summary["grades"]
@@ -213,6 +217,8 @@ def run_cli(
         "KNOWLEDGE_WORK_DIR",
         "KNOWLEDGE_OUTPUT_DIR",
         "KNOWLEDGE_GITHUB_API",
+        "KNOWLEDGE_DATE",
+        "KNOWLEDGE_GAIN_DATE",
     ):
         env.pop(key, None)
     env["KNOWLEDGE_WORK_DIR"] = str(work_dir)

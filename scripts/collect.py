@@ -1,7 +1,8 @@
-"""采集脚本：GitHub 搜索 API（4 个 star 区间）→ 今日新增 star → 排序取前 50 → collect.json。
+"""采集脚本：GitHub 搜索 API（4 个 star 区间）→ 数据归属日新增 star → 排序取前 50 → collect.json。
 
 用法：
     uv run python scripts/collect.py --date 2026-10-21
+    uv run python scripts/collect.py --date 2026-10-21 --gain-date 2026-10-20
     uv run python scripts/collect.py --date 2026-10-21 --dry-run
 """
 
@@ -101,8 +102,8 @@ def load_baselines(day: str) -> dict[str, tuple[str, int]]:
     return baselines
 
 
-def search_candidates(day: str, gaps: list[str]) -> list[dict]:
-    cutoff = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
+def search_candidates(gain_day: str, gaps: list[str]) -> list[dict]:
+    cutoff = (date.fromisoformat(gain_day) - timedelta(days=1)).isoformat()
     collected: list[dict] = []
     for star_range in STAR_RANGES:
         query = f"pushed:>={cutoff} stars:{star_range}"
@@ -173,14 +174,14 @@ def star_history(full_name: str, day: str) -> int | None:
     return None
 
 
-def build(day: str) -> dict:
+def build(day: str, gain_day: str) -> dict:
     gaps: list[str] = []
     rules = load_validation_rules()
     window_days = rules["dedupe_window_days"]
     baselines = load_baselines(day)
     yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
 
-    candidates = search_candidates(day, gaps)
+    candidates = search_candidates(gain_day, gaps)
     if not candidates:
         raise RuntimeError("搜索 API 未返回任何候选")
 
@@ -217,7 +218,7 @@ def build(day: str) -> dict:
         if history_calls >= MAX_HISTORY_CALLS:
             break
         history_calls += 1
-        value = star_history(repo["full_name"], day)
+        value = star_history(repo["full_name"], gain_day)
         if value is None:
             history_failed += 1
             gaps.append(f"{repo['full_name']} 未取到 star 历史增量")
@@ -234,7 +235,7 @@ def build(day: str) -> dict:
     picked = ranked[:PICK_LIMIT]
     if not picked:
         raise RuntimeError(
-            "没有任何候选能取到今日新增 star（需要上一自然日的本地基线，或可用的 star 历史接口）"
+            "没有任何候选能取到数据归属日新增 star（需要上一自然日的本地基线，或可用的 star 历史接口）"
         )
     missing = [repo["full_name"] for repo in picked if not repo["url"] or not repo["full_name"]]
 
@@ -248,7 +249,7 @@ def build(day: str) -> dict:
     if len(ranked) > len(picked):
         gaps.append(f"未纳入 {len(ranked) - len(picked)} 个候选（排名在 {PICK_LIMIT} 之后）")
     if picked and not any(repo["stars_today"] for repo in picked):
-        gaps.append("今日增量全为 0（数据可能尚未产生），本次按 stars_total 降序排列")
+        gaps.append("数据归属日增量全为 0（数据可能尚未产生），本次按 stars_total 降序排列")
     min_items = rules["collect_min_items"]
     if len(picked) < min_items:
         gaps.append(f"入榜不足 {min_items} 条（实际 {len(picked)} 条）")
@@ -266,12 +267,20 @@ def build(day: str) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="采集 GitHub 当日趋势并写入 collect.json")
-    parser.add_argument("--date", default=today(), help="归属日期 YYYY-MM-DD（默认今天）")
+    parser.add_argument("--date", default=today(), help="发布日 YYYY-MM-DD（默认今天）")
+    parser.add_argument(
+        "--gain-date",
+        help="数据归属日 YYYY-MM-DD（默认同 --date；CI 定时任务取发布日前一天）",
+    )
     parser.add_argument("--dry-run", action="store_true", help="只打印 JSON，不落盘")
     args = parser.parse_args()
+    gain_date = args.gain_date or os.environ.get("KNOWLEDGE_GAIN_DATE") or args.date
 
     if not is_date(args.date):
         print(f"❌ 采集失败；原因：日期格式非法 {args.date}", file=sys.stderr)
+        return 2
+    if not is_date(gain_date):
+        print(f"❌ 采集失败；原因：数据归属日期格式非法 {gain_date}", file=sys.stderr)
         return 2
 
     if not token():
@@ -283,7 +292,7 @@ def main() -> int:
         return 2
 
     try:
-        payload = build(args.date)
+        payload = build(args.date, gain_date)
     except RuntimeError as error:
         print(f"❌ 采集失败；原因：{error}", file=sys.stderr)
         return 2

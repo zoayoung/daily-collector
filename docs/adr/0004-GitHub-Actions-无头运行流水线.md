@@ -1,5 +1,7 @@
 # GitHub Actions 无头运行流水线
 
+> 定时时间后来改为 08:00 UTC+8，数据归属前一日，见 ADR-0006；本文件其余决策仍有效。
+
 日报需要每天稳定产出，人工触发会因出差、忘记或环境差异而断档。现在由 GitHub Actions 在每日 14:00 UTC（22:00 UTC+8）运行与本地相同的采集→分析→整理→渲染流程，也保留 `workflow_dispatch` 手动触发与 `force` 覆盖。选在 22:00 UTC+8 而不是 08:00，是为了让 GitHub 的当日 star 增量在运行前已经产生（00:00 UTC 运行时当天数据恒为 0）。
 
 工作流锁定 `@opencode/cli@2.0.26` 与 `oc-go/deepseek-v4.1-flash`，把 provider 与默认模型写进仓库级 `opencode.json`，密钥只从 Secret `OC_GO_API_KEY` 注入；采集与回写共用 Actions 自带 `GITHUB_TOKEN`。同日已存在日报且未强制时跳过并成功退出；`force=true` 先清理工作区当日阶段产物，再按重新采集覆盖。提交范围仅限 `daily-knowledge/` 与当日 `work/<日期>/collect.json`，无变更不空提交。

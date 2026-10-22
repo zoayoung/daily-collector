@@ -98,6 +98,60 @@ class CollectCliTest(unittest.TestCase):
         self.assertEqual([item["stars_today"] for item in data["github"]], [FIXTURE_GAIN] * 3)
         self.assertTrue(all(item["stars_today_source"] == "star_history" for item in data["github"]))
 
+    def test_gain_date_controls_star_history_window(self) -> None:
+        with FixtureServer() as server:
+            result = run_cli(
+                "collect.py",
+                "--date",
+                "2026-10-21",
+                "--gain-date",
+                "2026-10-20",
+                "--dry-run",
+                work_dir=self.work,
+                output_dir=self.output,
+                api=server.url,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(result.stdout)
+        self.assertEqual(data["date"], "2026-10-21")
+        self.assertEqual([item["stars_today"] for item in data["github"]], [335] * 3)
+
+    def test_gain_date_env_controls_star_history_window(self) -> None:
+        with FixtureServer() as server:
+            result = run_cli(
+                "collect.py",
+                "--date",
+                "2026-10-21",
+                "--dry-run",
+                work_dir=self.work,
+                output_dir=self.output,
+                api=server.url,
+                extra_env={"KNOWLEDGE_GAIN_DATE": "2026-10-20"},
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(result.stdout)
+        self.assertEqual(data["date"], "2026-10-21")
+        self.assertEqual([item["stars_today"] for item in data["github"]], [335] * 3)
+
+    def test_default_date_honors_knowledge_date_env(self) -> None:
+        override = "2026-10-20"
+        with FixtureServer() as server:
+            result = run_cli(
+                "collect.py",
+                "--dry-run",
+                work_dir=self.work,
+                output_dir=self.output,
+                api=server.url,
+                extra_env={"KNOWLEDGE_DATE": override},
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(result.stdout)
+        self.assertEqual(data["date"], override)
+        self.assertEqual([item["stars_today"] for item in data["github"]], [335] * 3)
+
     def test_fails_without_token_and_makes_no_request(self) -> None:
         with FixtureServer() as server:
             result = run_cli(

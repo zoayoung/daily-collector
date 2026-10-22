@@ -2,9 +2,9 @@ name: daily-knowledge
 
 on:
   schedule:
-    # GitHub Actions 的 cron 按 UTC；14:00 UTC = 22:00 UTC+8。
-    # 当天大部分时段已过，GitHub 的当日 star 增量才不是 0。
-    - cron: "0 14 * * *"
+    # GitHub Actions 的 cron 按 UTC；00:00 UTC = 08:00 UTC+8。
+    # 08:00 发布当天日报，数据归属前一个完整自然日（UTC+8）。
+    - cron: "0 0 * * *"
   workflow_dispatch:
     inputs:
       force:
@@ -25,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       date: ${{ steps.date.outputs.date }}
+      gain_date: ${{ steps.date.outputs.gain_date }}
       skip: ${{ steps.guard.outputs.skip }}
 
     steps:
@@ -34,10 +35,21 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: 计算 UTC+8 日期
+      - name: 计算发布日与数据归属日
         id: date
         shell: bash
-        run: echo "date=$(TZ=Asia/Shanghai date +%F)" >> "$GITHUB_OUTPUT"
+        run: |
+          DATE=$(TZ=Asia/Shanghai date +%F)
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            # 早上 8 点发布，数据归属前一个完整自然日
+            GAIN_DATE=$(TZ=Asia/Shanghai date -d "$DATE -1 day" +%F)
+          else
+            # 手动触发与本地一致，发布日和数据归属日都是当天
+            GAIN_DATE="$DATE"
+          fi
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+          echo "gain_date=$GAIN_DATE" >> "$GITHUB_OUTPUT"
+          echo "发布日：$DATE；数据归属日：$GAIN_DATE（${{ github.event_name }}）" >> "$GITHUB_STEP_SUMMARY"
 
       - name: 幂等检查
         id: guard
@@ -73,14 +85,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: 准备当日工作区
+      - name: 准备发布日工作区
         shell: bash
         env:
           FORCE: ${{ github.event.inputs.force }}
           DATE: ${{ needs.guard.outputs.date }}
         run: |
           if [ "$FORCE" = "true" ]; then
-            # CI 无头：直接清理工作区当日产物，避免代理等待「三选一」。
+            # CI 无头：直接清理发布日的产物，避免代理等待「三选一」。
             # 保留 tokens.json，token 历史不丢。
             rm -f "daily-knowledge/$DATE.md"
             rm -f "work/$DATE/collect.json" \
@@ -117,13 +129,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OC_GO_API_KEY: ${{ secrets.OC_GO_API_KEY }}
+          KNOWLEDGE_DATE: ${{ needs.guard.outputs.date }}
+          KNOWLEDGE_GAIN_DATE: ${{ needs.guard.outputs.gain_date }}
         run: |
           : "${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
           : "${OC_GO_API_KEY:?OC_GO_API_KEY is required}"
           opencode run --standalone --auto \
             --model oc-go/deepseek-v4.1-flash \
             --agent build \
-            "开始今天的知识采集"
+            "开始知识采集；发布日 $KNOWLEDGE_DATE；数据归属 $KNOWLEDGE_GAIN_DATE"
 
       - name: 校验产物
         shell: bash
@@ -142,7 +156,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # 只发布日报、token 报告与当日采集产物
+          # 只发布日报、token 报告与发布日的采集产物
           git add "daily-knowledge" "work/$DATE/collect.json"
 
           if git diff --cached --quiet; then

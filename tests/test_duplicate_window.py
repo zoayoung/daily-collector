@@ -49,7 +49,7 @@ def analyzed(name: str, repeat: dict | None) -> dict:
 
 
 class CollectWindowTest(unittest.TestCase):
-    """采集在计算今日新增 star 之前完成过滤。"""
+    """采集在计算数据归属日新增 star 之前完成过滤。"""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()

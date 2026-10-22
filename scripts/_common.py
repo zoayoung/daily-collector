@@ -64,6 +64,9 @@ def now() -> datetime:
 
 
 def today() -> str:
+    override = os.environ.get("KNOWLEDGE_DATE")
+    if isinstance(override, str) and DATE_RE.match(override):
+        return override
     return now().strftime("%Y-%m-%d")
 
 
