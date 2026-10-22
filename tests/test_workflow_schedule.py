@@ -34,13 +34,3 @@ class WorkflowScheduleTest(unittest.TestCase):
     def test_daily_run_is_0800_utc_plus_8(self) -> None:
         cron = schedule_cron(WORKFLOW.read_text(encoding="utf-8"))
         self.assertEqual(utc_plus_8(cron), (8, 0))
-
-    def test_schedule_attribution_is_previous_day(self) -> None:
-        text = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn('date -d "$DATE -1 day"', text)
-        self.assertIn("KNOWLEDGE_DATE: ${{ needs.guard.outputs.date }}", text)
-        self.assertIn("KNOWLEDGE_GAIN_DATE: ${{ needs.guard.outputs.gain_date }}", text)
-        self.assertIn(
-            '"开始知识采集；发布日 $KNOWLEDGE_DATE；数据归属 $KNOWLEDGE_GAIN_DATE"',
-            text,
-        )

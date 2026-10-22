@@ -6,17 +6,17 @@
 
 ## 问题陈述
 
-每天要在 GitHub 上冒头的新项目很多：手动浏览耗时、容易漏掉重点；只看累计 star 分不清「今天真正在涨」的项目。当前流水线虽然每天扫描约 100 个候选，但 `collect.json` 只写 20 个，最终日报常不足 15 个；同时 30 天去重留了「有新进展可突破」的口子，补丁版本也被当成新进展，导致昨天刚出现过的项目今天再次出现。候选池按累计 star 排序，天然被巨型老项目占满；star 历史兜底只有 20 次，又让大部分候选算不出今日增量。固定 6 个关注主题已取消，但上述限制叠加后，读者仍会觉得「项目又少又重复」。
+每天要在 GitHub 上冒头的新项目很多：手动浏览耗时、容易漏掉重点；只看累计 star 分不清「今天真正在涨」的项目。当前流水线虽然每天扫描约 100 个候选，但 `collect.json` 只写 20 个，最终日报常不足 15 个；同时 30 天去重留了「有新进展可突破」的口子，补丁版本也被当成新进展，导致昨天刚出现过的项目今天再次出现。候选池按累计 star 排序，天然被巨型老项目占满；star 历史兜底只有 20 次，又让大部分候选算不出数据归属日增量。固定 6 个关注主题已取消，但上述限制叠加后，读者仍会觉得「项目又少又重复」。
 
 需要一个能每天自动发布的工作流：采集由脚本确定性完成以省成本，分析与整理交给子代理以保证判断与文笔，产出中文知识日报并长期积累；同时用 schema 校验、确定性质量评分与 token 统计，让产物的「对不对」「好不好」「花了多少」都可见。日报要能展示单条评分与项目总 star，成本要有一份人可读的 markdown，产物要能每天提交到公开仓库。
 
 ## 方案
 
 - 用户说「开始今天的知识采集」，一次跑完 **采集 → 分析 → 整理 → 渲染** 四段，并汇报 token 成本。本地与 GitHub Actions 共用同一套步骤；CI 定时任务以「开始知识采集；发布日 YYYY-MM-DD；数据归属 YYYY-MM-DD」触发，发布日为运行日，数据归属为前一日（UTC+8）。
-- **采集（Python 脚本，必须使用采集凭证）**：按多个 star 区间分别搜索、按 `full_name` 去重得到约 800 个唯一候选；先用已发布日报过滤 30 天窗口内的项目，再逐个算出「今日新增 star」，按它降序写入前 50 条到 `collect.json`。
+- **采集（Python 脚本，必须使用采集凭证）**：按多个 star 区间分别搜索、按 `full_name` 去重得到约 800 个唯一候选；先用已发布日报过滤 30 天窗口内的项目，再逐个算出「数据归属日新增 star」，按它降序写入前 50 条到 `collect.json`。
 - **分析（子代理）**：只做内容分析——自由打标签（不受固定主题表约束）、给 30 天外再次出现的项目标 `repeat.last_seen`、写分析要点与评价，写 `analyze.json`；不再自行剔除 30 天内项目。
 - **整理（子代理）**：职责分离后的定稿者——从分析结果中定稿 10–15 条、润色为成稿、定排序与概览，写 `organize.json`；批量剔除时记数并按批次说明理由。
-- **渲染（主代理）**：按固定模板把 `organize.json` 机械填充为 `daily-knowledge/YYYY-MM-DD.md`，不改写文字；每条附总 star、今日新增 star 与质量评分。
+- **渲染（主代理）**：按固定模板把 `organize.json` 机械填充为 `daily-knowledge/YYYY-MM-DD.md`，不改写文字；每条附总 star、数据归属日新增 star 与质量评分。
 - **质量与成本**：`schemas/` 是字段唯一来源，`scripts/validate.py` 做契约校验与 30 天窗口硬校验；`.opencode/plugins/` 的 hook 在整理产物落盘后调 `scripts/score.py` 做 5 维打分并写 `score.json`，低于 60 分打回重来；token 插件聚合消耗，同时写 `daily-knowledge/tokens/YYYY-MM-DD.md` 供人阅读。
 - **自动发布（GitHub Actions）**：每天 00:00 UTC（08:00 UTC+8）无头运行同一套流水线，发布当天（UTC+8）的日报、数据归属于前一日，把日报、token 报告与每日 `collect.json` 提交回公开仓库 `zoayoung/daily-collector` 的 `main` 分支。
 - 中间产物按天落在 `work/YYYY-MM-DD/`（仅每日 `collect.json` 进 git，其余本地保留）。
@@ -32,11 +32,11 @@
 7. 作为维护者，我希望采集由 Python 脚本完成而不是子代理交互抓取，以便口径可复现、token 成本可预期。
 8. 作为维护者，我希望采集脚本必须携带 `GITHUB_TOKEN` 认证运行，以便配额稳定、口径可预期。
 9. 作为读者，我希望用 GitHub 搜索 API 拉候选，口径为「近 1 日有推送、累计 star≥100」，以便覆盖真正活跃而非刚发布的仓库。
-10. 作为读者，我希望按「今日新增 star」排序，以便看到当天真正在涨的项目。
-11. 作为读者，我希望今日新增 star 优先用本地历史差分、无历史时用官方 star 历史接口兜底，以便在零额外成本与准确性之间取平衡。
+10. 作为读者，我希望按「数据归属日新增 star」排序，以便看到当天真正在涨的项目。
+11. 作为读者，我希望数据归属日新增 star 优先用本地历史差分、无历史时用官方 star 历史接口兜底，以便在零额外成本与准确性之间取平衡。
 12. 作为读者，我希望两次都拿不到星增量时如实记 null、不编造，以便数据可信。
 13. 作为读者，我希望每轮 star 历史兜底调用不超过 100 次，以便在扩大候选覆盖的同时控制抓取耗时与配额消耗。
-14. 作为分析者，我希望采集字段齐全（全名、描述、语言、总 star、今日新增 star、fork、链接），以便后续阶段不必回头补抓。
+14. 作为分析者，我希望采集字段齐全（全名、描述、语言、总 star、数据归属日新增 star、fork、链接），以便后续阶段不必回头补抓。
 15. 作为维护者，我希望原始数据全量保留在 work/、不做删减，以便随时复查。
 16. 作为读者，我希望日报每日输出 10–15 个项目，以便篇幅稳定又不冗长。
 17. 作为读者，我希望每个项目带上自由标签，以便一眼看出它涉及哪些技术方向。
@@ -88,7 +88,7 @@
 63. 作为读者，我希望标签由分析阶段按内容生成，以便标签如实反映项目而不是被白名单裁剪。
 64. 作为读者，我希望概览把零散标签合并成不超过 6 组，以便标签变多后日报仍然易读。
 65. 作为维护者，我希望关注面不受固定主题表限制，以便系统不静默缩小采集与展示范围。
-66. 作为读者，我希望每条项目显示总 star 与今日新增 star，以便同时判断体量与当天热度。
+66. 作为读者，我希望每条项目显示总 star 与数据归属日新增 star，以便同时判断体量与当天热度。
 67. 作为读者，我希望每条项目显示质量评分与 A/B/C 等级，以便知道系统为什么认为它写得好或不好。
 68. 作为读者，我希望标题下保留均分与等级分布，以便一眼看到当天整体质量。
 69. 作为读者，我希望评分不可用时省略评分部分而不是编造数字，以便数据始终可信。
@@ -144,7 +144,7 @@
 - 概览口径：整理阶段把自由标签合并为不超过 6 组，再写 `overview.themes`；0 命中省略。
 - 日报展示：每条元信息行固定为「Star：总数（今日 +增量）· 评分：总分 / 等级」；评分来自当日 `score.json`，按 `rank` 与 `full_name` 同时匹配；缺失处理与标题下行见「编排协议 · 渲染模板」。
 - 产物目录：日报与 token 报告落在 `daily-knowledge/`，日报文件名为 `YYYY-MM-DD.md`；历史日报是该目录下的去重依据。默认目录可用 `KNOWLEDGE_OUTPUT_DIR` 覆盖。
-- token 报告：`.opencode/plugins/token-stats.js` 在刷新 `work/YYYY-MM-DD/tokens.json` 后，同时写 `daily-knowledge/tokens/YYYY-MM-DD.md`；文件名取发布日，内部标「统计窗口：昨日到今日」。内容按 run、按代理列出与 `tokens.json` 相同的字段，并给出当日合计。日期取 `KNOWLEDGE_DATE`，统计窗口依据 `KNOWLEDGE_GAIN_DATE`，未设置时取本地今天。
+- token 报告：`.opencode/plugins/token-stats.js` 在刷新 `work/YYYY-MM-DD/tokens.json` 后，同时写 `daily-knowledge/tokens/YYYY-MM-DD.md`；文件名取发布日，数据归属日与发布日不同时在正文标注统计窗口行（口径见「渲染模板」节）。内容按 run、按代理列出与 `tokens.json` 相同的字段，并给出当日合计。日期取 `KNOWLEDGE_DATE`，统计窗口依据 `KNOWLEDGE_GAIN_DATE`，未设置时取本地今天。
 - 自动运行：GitHub Actions 每日 00:00 UTC（08:00 UTC+8）触发，发布日为运行日，数据归属为运行日前一天（UTC+8）；`ubuntu-latest`；步骤为检出 → 计算发布日与数据归属日 → 安装 uv 与 Node → 同步依赖 → 跑单元测试 → 安装锁定版本的 opencode → 无头执行 `opencode run --auto "开始知识采集；发布日 <发布日>；数据归属 <数据归属日>"` → 校验产物 → 提交回写。
 - CI 参数：opencode 以 `@opencode/cli@2.0.26` 安装（`opencode-ai` 是 1.x 包，勿混用），所有代理统一使用 `oc-go/deepseek-v4.1-flash`；仓库内 `opencode.json` 固定 provider `oc-go` 与默认模型，`apiKey` 用 `{env:OC_GO_API_KEY}` 占位。
 - CI 凭证：模型密钥只放在仓库 Secret `OC_GO_API_KEY`；采集与回写共用 Actions 自带的 `GITHUB_TOKEN`（`permissions.contents: write`），不额外配置 Personal Access Token。
@@ -158,7 +158,7 @@
 - 30 天重复窗口：以 `daily-knowledge/*.md` 中已发布的项目为准（读取 `### N. owner/repo` 标题行，大小写不敏感），窗口为 `[发布日-30, 发布日-1]`，**不含发布日**；窗口内出现过的项目零例外剔除。同日重跑不把发布日当天已发布内容当历史。
 - 采集过滤与计数：候选先去重，再按 30 天窗口剔除，剩余为 `eligible`；`dropped_recent_duplicates` 记录被剔除数。`collect.json` 新增可选 `stats: { candidates, eligible, dropped_recent_duplicates }`，旧产物无此字段仍有效。
 - 采集异常：未配置 `GITHUB_TOKEN`、所有搜索均失败、过滤后候选为空即脚本失败（退出码非 0、不写正式文件）；`star_history` 单次失败记 `gaps` 并把该条记 null。
-- 新增 star 口径：基线取 `work/**/collect.json` 中**日期早于发布日的最近一次**该 repo 的 `stars_total`；仅当基线恰为**发布日的上一自然日**时才用于差分（同日重跑不会读到自身产物）。优先级：① 本地差分 `stars_today_source=local_diff`；② 官方兜底 `GET /repos/{owner}/{repo}/stargazers/history`，按**数据归属日**查、按 `stars_total` 降序依次兜底，总量 ≤100 次/轮，`stars_today_source=star_history`；③ 都不可得记 null。定时任务在 08:00 取数据归属日为发布日前一天，使本地差分与 star 历史都覆盖同一个已结束的 24 小时。
+- 新增 star 口径：基线取 `work/**/collect.json` 中**日期早于发布日的最近一次**该 repo 的 `stars_total`；仅当基线恰为**发布日的上一自然日**时才用于差分（同日重跑不会读到自身产物）。优先级：① 本地差分 `stars_today_source=local_diff`；② 官方兜底 `GET /repos/{owner}/{repo}/stargazers/history`，按**数据归属日**查、按 `stars_total` 降序依次兜底，总量 ≤100 次/轮，`stars_today_source=star_history`；③ 都不可得记 null。定时任务在 08:00 取数据归属日为发布日前一天：`stargazers/history` 按该日历日查；本地差分以上一发布日的 `collect.json` 为基线，窗口是上次采集到本次采集（约 24 小时），与日历日归属窗口错开 8 小时，仅在拿不到 star 历史时作近似。
 - 排序与选取：在 `eligible` 中丢弃 `stars_today=null` 的候选，其余按 `stars_today` 降序取前 50；不足 50 按实际数量输出，不足 10 在 `gaps` 说明。
 - 认证（必填）：脚本从进程环境或项目根 `.env` 读取 `GITHUB_TOKEN`（兼容 `GH_TOKEN`），进程环境优先；缺失即失败，不退回未认证。`.env` 由脚本自行加载（opencode 不自动注入），`.env` 已被 git 忽略，模板见 `.env.example`。认证后配额：搜索 30 次/分、核心 5000 次/时。
 - 分析阶段：为 `collect.json` 的全部条目（通常 50 条）做自由标签与 `core`/`why` 分析要点；只给 30 天外再次出现的项目写 `repeat.last_seen`，**不再剔除 30 天内项目**。**不决定入选条数、不写 `rank`/`overview`**。`core`/`why` 为分析要点，不设 100 汉字硬限。
@@ -448,7 +448,7 @@
 ```
 
 - `overview.themes` 按 organize 中的顺序逐条输出；条目的 `themes` 为空数组时输出 `[其他]`。
-- Star 总数用千分位；今日新增照抄 `stars_today` 的数值（含 0，不加千分位、不四舍五入）。
+- Star 总数用千分位；`stars_today`（数据归属日增量）照抄数值（含 0，不加千分位、不四舍五入）。
 - 逐条评分只采用 `score.json.items[]` 中 `rank` 与 `full_name` 同时匹配的条目；某条匹配不到（缺项、名次或全名不符）时，该条只省略「· 评分：总分 / 等级」，Star 照常输出，其余条目与标题行不受影响。
 - 标题下均分行仅在 `score.json` 存在、可解析、`valid=true` 且 `summary.average`、`summary.grades` 齐全时输出；均分照抄 `summary.average`，A/B/C 取 `summary.grades`。
 - `score.json` 缺失、不可解析、`valid=false` 或 `summary` 不可用时，标题下均分行与所有逐条评分一起省略，并在汇报中说明原因。
@@ -516,7 +516,7 @@
 
 ### 被测模块
 
-- 采集脚本：无凭证守门（且不发请求）、star 历史解析、响应中断重试、`--date` 落盘与 `collected_at` 格式、按今日新增 star 降序、30 天过滤与 `stats` 计数、多 star 区间查询去重、每区间翻页、50 条上限、候选不足时写入 `gaps`、上一自然日 `collect.json` 的本地差分、`star_history` 100 次上限。
+- 采集脚本：无凭证守门（且不发请求）、star 历史解析、响应中断重试、`--date` 落盘与 `collected_at` 格式、按数据归属日新增 star 降序、30 天过滤与 `stats` 计数、多 star 区间查询去重、每区间翻页、50 条上限、候选不足时写入 `gaps`、上一自然日 `collect.json` 的本地差分、`star_history` 100 次上限。
 - 校验脚本：三份契约的正反例（未知字段、类型错误、date 与目录不一致、rank 不连续、计数不一致、repeat 历史不存在、`themes` 元素类型非法）；30 天窗口内条目硬拒（不论是否有 `repeat`）、30 天外 `repeat.last_seen` 必须等于最近发布日期、`repeat` 不再接受 `new_progress`、日报 10–15 条边界、旧 `collect.json` 无 `stats` 仍通过、`stats` 跨文件透传一致；自由标签与非固定主题被接受，空 `themes` 可接受；`--all` 跳过只有 tokens.json 的日期目录。
 - 评分脚本：五维得分、A/B/C 阈值、`pass` 判定、`attempts[]` 追加、校验失败时跳过分、标签个数分档（0 / 1 / 2–4 / ≥5）。
 - 不测：插件内部排版、子代理提示词与文笔、GitHub 真实网络、GitHub Actions runner。
@@ -544,8 +544,8 @@
   - 数量与排序：GitHub 趋势 10–15 条（或 gaps 说明不足）、按 `stars_today` 降序、`rank` 连续。
   - 候选与入榜：`collect.json` 50 条（或 gaps 说明不足）、`stats.candidates - stats.dropped_recent_duplicates = stats.eligible`、`eligible >= github 条数`。
   - 标签自由：条目标签不再限定固定主题；每条建议 2–4 个；未打标签的渲染为 `[其他]`；概览分组不超过 6 组。
-  - 展示齐全：每条含总 star（千分位）、今日新增 star 与评分/等级；标题下含均分与 A/B/C 分布；逐条评分按 `rank` 与 `full_name` 同时匹配，单条缺失只省略该条评分，整份评分不可用才连标题行一起省略。
-  - 数字可核对：条目 star 总数/今日新增与 collect/organize 一致，逐条评分与 `score.json` 的 `total`/`grade` 一致，标题均分与分布与 `summary` 一致。
+  - 展示齐全：每条含总 star（千分位）、数据归属日新增 star 与评分/等级；标题下含均分与 A/B/C 分布；逐条评分按 `rank` 与 `full_name` 同时匹配，单条缺失只省略该条评分，整份评分不可用才连标题行一起省略。
+  - 数字可核对：条目 star 总数/数据归属日增量与 collect/organize 一致，逐条评分与 `score.json` 的 `total`/`grade` 一致，标题均分与分布与 `summary` 一致。
   - 篇幅：每条核心内容 ≤100 个汉字。
   - 去重可核查：每个 🔁 标记中的日期在 `daily-knowledge/` 历史中确实存在且为最近一次；30 天窗口内出现过的项目一条都没有出现，不论是否有新进展。
   - 可追溯：work/YYYY-MM-DD/ 的 collect/analyze/organize/score 覆盖当天全部产出条目；当日 `collect.json` 已提交。
@@ -579,7 +579,7 @@
 - 标签由分析阶段自由生成；若将来需要引导，在技能正文里加「标签建议」，不恢复白名单。
 - 30 天重复窗口是硬规则：窗口内零例外，窗口外才标 `🔁`；判断依据只看已发布日报，不看未发布的采集产物。
 - 自动运行配置：在 GitHub 仓库 `Settings → Secrets and variables → Actions` 添加 `OC_GO_API_KEY`；定时为 `0 0 * * *` UTC（08:00 UTC+8，发布当天日报，数据归属前一日）；手动 dispatch 的 `force` 用于覆盖当天。
-- 定时任务的发布日通过 `KNOWLEDGE_DATE`、数据归属日通过 `KNOWLEDGE_GAIN_DATE` 贯穿工作流、采集脚本与 token 插件；手动触发与本地运行不设置这两个变量，两者都取本地今天。
+- 定时任务的发布日通过 `KNOWLEDGE_DATE`、数据归属日通过 `KNOWLEDGE_GAIN_DATE` 贯穿工作流、采集脚本与 token 插件；手动触发也注入这两个变量，但值都取当天；本地运行不设置这两个变量，两者都取本地今天。
 - 本地推送使用 `~/.ssh/git`；CI 使用自带 `GITHUB_TOKEN`，不需要 Personal Access Token。
 - 本 spec 落在 local markdown tracker：`.scratch/knowledge-daily/spec.md`；tracker 配置见 `docs/agents/issue-tracker.md`。
 - 术语见根目录 `GLOSSARY.md`（候选集 / 入榜集 / 定稿集 / 重复窗口）；严格去重与扩容候选池的取舍见 `docs/adr/0005-严格去重与扩容候选池.md`。

@@ -43,7 +43,7 @@ GitHub Actions 每个自然日 08:00（UTC+8）无头运行同一套流程，发
 - `uv run python scripts/collect.py|validate.py|score.py`：采集、校验、评分；依赖由 `uv` 管理。
 - `.opencode/plugins/quality-score.js`：写 `organize.json` 后自动校验并打分。
 - 开发检查：首次执行 `git config core.hooksPath .githooks`，之后 pre-commit 会跑 ruff、compileall、CLI 回归测试（`uv run python -m unittest discover -s tests -t .`）、`node --check`、JSON 解析与插件 `$` 扫描。
-- `.opencode/plugins/token-stats.js`：聚合每次运行的 token 消耗到 `work/YYYY-MM-DD/tokens.json`，并生成人可读的 `daily-knowledge/tokens/YYYY-MM-DD.md`（格式见 spec「tokens.json（用量产物）」节）；文件名取 `KNOWLEDGE_DATE`（发布日），内部标 `KNOWLEDGE_GAIN_DATE`（数据归属日），未设置时都取本地今天。
+- `.opencode/plugins/token-stats.js`：聚合每次运行的 token 消耗到 `work/YYYY-MM-DD/tokens.json`，并生成人可读的 `daily-knowledge/tokens/YYYY-MM-DD.md`（格式见 spec「tokens.json（用量产物）」节）；文件名取 `KNOWLEDGE_DATE`（发布日），数据归属日取 `KNOWLEDGE_GAIN_DATE` 且与发布日不同时在正文标注统计窗口，未设置时都取本地今天。
 
 ## 凭证
 

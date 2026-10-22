@@ -6,6 +6,7 @@ const OFFSET_MS = 8 * 60 * 60 * 1000
 const AGENT_ORDER = ["build", "knowledge-analyze", "knowledge-organize"]
 const BUCKET_KEYS = ["messages", "input", "output", "cache_read", "cache_write", "reasoning", "cost"]
 const MAX_SESSION_DEPTH = 10
+const WINDOW_NOTE = "> 统计窗口：昨日到今日（UTC+8）"
 let tempSequence = 0
 
 function tempPath(file) {
@@ -18,14 +19,17 @@ function localDate(timestamp) {
   return new Date(timestamp + OFFSET_MS).toISOString().slice(0, 10)
 }
 
+function envDate(name, fallback) {
+  const value = process.env[name]
+  return /^\d{4}-\d{2}-\d{2}$/.test(value ?? "") ? value : fallback()
+}
+
 function knowledgeDate() {
-  const override = process.env.KNOWLEDGE_DATE
-  return /^\d{4}-\d{2}-\d{2}$/.test(override ?? "") ? override : localDate(Date.now())
+  return envDate("KNOWLEDGE_DATE", () => localDate(Date.now()))
 }
 
 function gainDate() {
-  const override = process.env.KNOWLEDGE_GAIN_DATE
-  return /^\d{4}-\d{2}-\d{2}$/.test(override ?? "") ? override : knowledgeDate()
+  return envDate("KNOWLEDGE_GAIN_DATE", knowledgeDate)
 }
 
 function localStamp(timestamp) {
@@ -79,7 +83,7 @@ function sumRuns(runs) {
 }
 
 function renderReport(date, gainDay, runs) {
-  const attribution = gainDay === date ? [] : ["> 统计窗口：昨日到今日（UTC+8）"]
+  const attribution = gainDay === date ? [] : [WINDOW_NOTE]
   const sections = runs.map((run, index) => {
     const rows = orderedAgents(run.agents).map((agent) => tableRow(run.agents[agent], agent))
     if (run.total) rows.push(tableRow(run.total, "合计"))

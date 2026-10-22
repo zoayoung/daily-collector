@@ -152,6 +152,27 @@ class CollectCliTest(unittest.TestCase):
         self.assertEqual(data["date"], override)
         self.assertEqual([item["stars_today"] for item in data["github"]], [335] * 3)
 
+    def test_invalid_date_env_fails_before_requests(self) -> None:
+        cases = (
+            ({"KNOWLEDGE_DATE": "2026-13-99"}, []),
+            ({"KNOWLEDGE_GAIN_DATE": "2026-13-99"}, ["--date", "2026-10-21"]),
+        )
+        for extra_env, argv in cases:
+            with self.subTest(extra_env=extra_env), FixtureServer() as server:
+                result = run_cli(
+                    "collect.py",
+                    *argv,
+                    "--dry-run",
+                    work_dir=self.work,
+                    output_dir=self.output,
+                    api=server.url,
+                    extra_env=extra_env,
+                )
+
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("日期格式非法", result.stderr)
+                self.assertEqual(server.requests, [])
+
     def test_fails_without_token_and_makes_no_request(self) -> None:
         with FixtureServer() as server:
             result = run_cli(

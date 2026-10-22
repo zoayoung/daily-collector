@@ -102,8 +102,8 @@ def load_baselines(day: str) -> dict[str, tuple[str, int]]:
     return baselines
 
 
-def search_candidates(gain_day: str, gaps: list[str]) -> list[dict]:
-    cutoff = (date.fromisoformat(gain_day) - timedelta(days=1)).isoformat()
+def search_candidates(day: str, gaps: list[str]) -> list[dict]:
+    cutoff = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
     collected: list[dict] = []
     for star_range in STAR_RANGES:
         query = f"pushed:>={cutoff} stars:{star_range}"
@@ -181,7 +181,7 @@ def build(day: str, gain_day: str) -> dict:
     baselines = load_baselines(day)
     yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
 
-    candidates = search_candidates(gain_day, gaps)
+    candidates = search_candidates(day, gaps)
     if not candidates:
         raise RuntimeError("搜索 API 未返回任何候选")
 
@@ -267,17 +267,18 @@ def build(day: str, gain_day: str) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="采集 GitHub 当日趋势并写入 collect.json")
-    parser.add_argument("--date", default=today(), help="发布日 YYYY-MM-DD（默认今天）")
+    parser.add_argument("--date", help="发布日 YYYY-MM-DD（默认取 KNOWLEDGE_DATE，再取今天）")
     parser.add_argument(
         "--gain-date",
-        help="数据归属日 YYYY-MM-DD（默认同 --date；CI 定时任务取发布日前一天）",
+        help="数据归属日 YYYY-MM-DD（默认取 KNOWLEDGE_GAIN_DATE，再取 --date；CI 定时任务取发布日前一天）",
     )
     parser.add_argument("--dry-run", action="store_true", help="只打印 JSON，不落盘")
     args = parser.parse_args()
-    gain_date = args.gain_date or os.environ.get("KNOWLEDGE_GAIN_DATE") or args.date
+    day = args.date or os.environ.get("KNOWLEDGE_DATE") or today()
+    gain_date = args.gain_date or os.environ.get("KNOWLEDGE_GAIN_DATE") or day
 
-    if not is_date(args.date):
-        print(f"❌ 采集失败；原因：日期格式非法 {args.date}", file=sys.stderr)
+    if not is_date(day):
+        print(f"❌ 采集失败；原因：日期格式非法 {day}", file=sys.stderr)
         return 2
     if not is_date(gain_date):
         print(f"❌ 采集失败；原因：数据归属日期格式非法 {gain_date}", file=sys.stderr)
@@ -292,7 +293,7 @@ def main() -> int:
         return 2
 
     try:
-        payload = build(args.date, gain_date)
+        payload = build(day, gain_date)
     except RuntimeError as error:
         print(f"❌ 采集失败；原因：{error}", file=sys.stderr)
         return 2
@@ -301,7 +302,7 @@ def main() -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
 
-    path = write_json(WORK_DIR / args.date / "collect.json", payload)
+    path = write_json(WORK_DIR / day / "collect.json", payload)
     print(
         f"✅ 采集完成；产物：{path.relative_to(WORK_DIR.parent).as_posix()}；"
         f"入榜 {len(payload['github'])} 条；gaps：{'有' if payload['gaps'] else '无'}"

@@ -64,9 +64,6 @@ def now() -> datetime:
 
 
 def today() -> str:
-    override = os.environ.get("KNOWLEDGE_DATE")
-    if isinstance(override, str) and DATE_RE.match(override):
-        return override
     return now().strftime("%Y-%m-%d")
 
 
@@ -75,7 +72,13 @@ def stamp() -> str:
 
 
 def is_date(value: object) -> bool:
-    return isinstance(value, str) and bool(DATE_RE.match(value))
+    if not isinstance(value, str) or not DATE_RE.match(value):
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
 
 
 def work_path(date: str, name: str) -> Path:

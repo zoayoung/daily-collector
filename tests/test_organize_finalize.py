@@ -180,6 +180,22 @@ class OrganizeFinalizeTest(unittest.TestCase):
         self.assertIn("🔁 重复：上次 2026-08-31", report)
         self.assertNotIn("新进展", report)
 
+    def test_rendered_report_marks_window_when_gain_date_differs(self) -> None:
+        report = render_report(
+            organize_document(analyzed_items(12), dropped_by_organize=0),
+            gain_date="2026-10-21",
+        )
+
+        self.assertIn("> 统计窗口：昨日到今日（UTC+8）", report)
+
+    def test_rendered_report_omits_window_when_gain_date_matches(self) -> None:
+        report = render_report(
+            organize_document(analyzed_items(12), dropped_by_organize=0),
+            gain_date=DAY,
+        )
+
+        self.assertNotIn("统计窗口", report)
+
 
 if __name__ == "__main__":
     unittest.main()
