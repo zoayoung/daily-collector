@@ -185,6 +185,14 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
                 errors.append(
                     f"stats.eligible={eligible} 小于入榜条数 {len(items)}"
                 )
+            channels = stats.get("channels")
+            if channels is not None:
+                total = channels.get("star_bands", 0) + channels.get("new_repos", 0)
+                if total != candidates:
+                    errors.append(
+                        "stats.channels.star_bands + stats.channels.new_repos="
+                        f"{total} 与 stats.candidates={candidates} 不一致"
+                    )
 
     if stage in {"analyze", "organize"}:
         stats = data.get("stats") or {}

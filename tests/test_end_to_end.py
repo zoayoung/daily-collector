@@ -12,7 +12,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.support import FixtureServer, render_report, run_cli, search_request
+from tests.support import (
+    NEW_REPOS_CHANNEL,
+    FixtureServer,
+    render_report,
+    run_cli,
+    search_request,
+)
 
 DAY = "2026-10-21"
 WINDOW_HISTORY_DAY = "2026-10-10"
@@ -165,7 +171,7 @@ class EndToEndTest(unittest.TestCase):
                 for path in server.requests
                 if path.startswith("/search/repositories")
             }
-            self.assertEqual(searched, set(RANGES))
+            self.assertEqual(searched, set(RANGES) | {NEW_REPOS_CHANNEL})
         self.assertEqual(collected.returncode, 0, collected.stdout + collected.stderr)
 
         collect = json.loads((self.work / DAY / "collect.json").read_text(encoding="utf-8"))

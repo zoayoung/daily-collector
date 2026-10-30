@@ -19,6 +19,7 @@ from typing import Self
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
+NEW_REPOS_CHANNEL = "new-repos"
 
 
 def fixture(name: str) -> object:
@@ -31,12 +32,14 @@ def fixture_bytes(name: str) -> bytes:
 
 
 def search_request(path: str) -> tuple[str, int]:
-    """从搜索请求路径解析 star 区间与页码。"""
+    """从搜索请求路径解析通道与页码；新仓库通道返回 NEW_REPOS_CHANNEL。"""
     query = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
     text = (query.get("q") or [""])[0]
+    page = int((query.get("page") or ["1"])[0])
+    if "created:" in text:
+        return NEW_REPOS_CHANNEL, page
     match = re.search(r"stars:(\S+)", text)
     star_range = match.group(1) if match else ""
-    page = int((query.get("page") or ["1"])[0])
     return star_range, page
 
 
@@ -54,10 +57,12 @@ class FixtureServer:
     break_first_search=True 时，第一次搜索请求只发送一半响应体并断开，
     用于复现 http.client.IncompleteRead。
 
-    search_pages 可按 (star 区间, 页码) 覆盖搜索响应；值可以是条目列表、
-    完整响应 dict 或原始字节。未覆盖的请求回放 search_repositories.json。
+    search_pages 可按 (通道, 页码) 覆盖搜索响应；通道为 star 区间或
+    NEW_REPOS_CHANNEL，值可以是条目列表、完整响应 dict 或原始字节。
+    未覆盖的 star 区间请求回放 search_repositories.json；未覆盖的新仓库
+    通道请求返回空列表。
 
-    search_failures 按 (star 区间, 页码) 指定要返回的 HTTP 状态码，用于模拟单区间失败。
+    search_failures 按 (通道, 页码) 指定要返回的 HTTP 状态码，用于模拟单通道失败。
     star_history_body 可覆盖 star 历史响应，用于模拟当天增量尚未产生的全 0 返回。
     """
 
@@ -78,8 +83,11 @@ class FixtureServer:
         self.url = f"http://127.0.0.1:{self._server.server_address[1]}"
 
     def _search_body(self, path: str) -> bytes:
-        value = self.search_pages.get(search_request(path))
+        key = search_request(path)
+        value = self.search_pages.get(key)
         if value is None:
+            if key[0] == NEW_REPOS_CHANNEL:
+                return search_payload([])
             return fixture_bytes("search_repositories.json")
         if isinstance(value, (bytes, bytearray)):
             return bytes(value)
