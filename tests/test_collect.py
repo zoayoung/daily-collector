@@ -52,7 +52,7 @@ class CollectCliTest(unittest.TestCase):
             data = self.collect(server)
 
         search_calls = [path for path in server.requests if path.startswith("/search/repositories")]
-        self.assertEqual(len(search_calls), 5)
+        self.assertEqual(len(search_calls), 6)
         self.assertEqual(len(data["github"]), 3)
 
     def test_single_range_failure_is_recorded_as_gap(self) -> None:

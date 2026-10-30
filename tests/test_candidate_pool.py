@@ -11,7 +11,7 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 
-from tests.support import FixtureServer, run_cli, search_request
+from tests.support import NEW_REPOS_CHANNEL, FixtureServer, run_cli, search_request
 
 DAY = "2026-10-21"
 RANGES = ("100..500", "500..2000", "2000..10000", ">10000")
@@ -74,7 +74,7 @@ class CandidatePoolTest(unittest.TestCase):
             for path in requests
             if path.startswith("/search/repositories")
         }
-        self.assertEqual(searched, set(RANGES))
+        self.assertEqual(searched, set(RANGES) | {NEW_REPOS_CHANNEL})
 
     def searches_in_range(self, requests: list[str], star_range: str) -> list[int]:
         return sorted(
@@ -195,7 +195,12 @@ class CandidatePoolTest(unittest.TestCase):
 
         self.assertEqual(
             data["stats"],
-            {"candidates": 3, "eligible": 2, "dropped_recent_duplicates": 1},
+            {
+                "candidates": 3,
+                "eligible": 2,
+                "dropped_recent_duplicates": 1,
+                "channels": {"star_bands": 3, "new_repos": 0},
+            },
         )
         self.assertEqual(
             data["stats"]["candidates"] - data["stats"]["dropped_recent_duplicates"],

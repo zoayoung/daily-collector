@@ -1,4 +1,4 @@
-"""采集脚本：GitHub 搜索 API（4 个 star 区间）→ 数据归属日新增 star → 排序取前 50 → collect.json。
+"""采集脚本：GitHub 搜索 API（4 个 star 区间 + 新仓库通道）→ 数据归属日新增 star → 排序取前 50 → collect.json。
 
 用法：
     uv run python scripts/collect.py --date 2026-10-21
@@ -35,6 +35,8 @@ from _common import (
 
 API = (os.environ.get("KNOWLEDGE_GITHUB_API") or "https://api.github.com").rstrip("/")
 STAR_RANGES = ("100..500", "500..2000", "2000..10000", ">10000")
+NEW_REPOS_MIN_STARS = 50
+NEW_REPOS_WINDOW_DAYS = 30
 MAX_PAGES = 2
 PER_PAGE = 100
 MAX_HISTORY_CALLS = 100
@@ -102,53 +104,74 @@ def load_baselines(day: str) -> dict[str, tuple[str, int]]:
     return baselines
 
 
-def search_candidates(day: str, gaps: list[str]) -> list[dict]:
+def candidate(item: dict) -> dict:
+    return {
+        "full_name": item.get("full_name"),
+        "url": item.get("html_url"),
+        "description": item.get("description"),
+        "language": item.get("language"),
+        "stars_total": item.get("stargazers_count"),
+        "stars_today": None,
+        "stars_today_source": None,
+        "forks": item.get("forks_count"),
+        "created_at": (item.get("created_at") or "")[:10],
+        "pushed_at": (item.get("pushed_at") or "")[:10],
+    }
+
+
+def search_page(query: str, page: int) -> list[dict]:
+    params = urllib.parse.urlencode(
+        {
+            "q": query,
+            "sort": "stars",
+            "order": "desc",
+            "per_page": PER_PAGE,
+            "page": page,
+        }
+    )
+    payload = get_json(f"{API}/search/repositories?{params}")
+    return payload.get("items", [])
+
+
+def search_candidates(day: str, gaps: list[str]) -> tuple[list[dict], dict[str, int]]:
     cutoff = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
-    collected: list[dict] = []
+    collected: list[tuple[str, dict]] = []
     for star_range in STAR_RANGES:
         query = f"pushed:>={cutoff} stars:{star_range}"
         for page in range(1, MAX_PAGES + 1):
-            params = urllib.parse.urlencode(
-                {
-                    "q": query,
-                    "sort": "stars",
-                    "order": "desc",
-                    "per_page": PER_PAGE,
-                    "page": page,
-                }
-            )
             try:
-                payload = get_json(f"{API}/search/repositories?{params}")
+                items = search_page(query, page)
             except RuntimeError as error:
                 gaps.append(f"搜索区间 {star_range} 第 {page} 页失败：{error}")
                 break
-            items = payload.get("items", [])
-            for item in items:
-                collected.append(
-                    {
-                        "full_name": item.get("full_name"),
-                        "url": item.get("html_url"),
-                        "description": item.get("description"),
-                        "language": item.get("language"),
-                        "stars_total": item.get("stargazers_count"),
-                        "stars_today": None,
-                        "stars_today_source": None,
-                        "forks": item.get("forks_count"),
-                        "created_at": (item.get("created_at") or "")[:10],
-                        "pushed_at": (item.get("pushed_at") or "")[:10],
-                    }
-                )
+            collected.extend(("star_bands", candidate(item)) for item in items)
             if len(items) < PER_PAGE:
                 break
+
+    new_cutoff = (date.fromisoformat(day) - timedelta(days=NEW_REPOS_WINDOW_DAYS)).isoformat()
+    query = f"created:>={new_cutoff} stars:>={NEW_REPOS_MIN_STARS}"
+    for page in range(1, MAX_PAGES + 1):
+        try:
+            items = search_page(query, page)
+        except RuntimeError as error:
+            gaps.append(f"搜索新仓库通道第 {page} 页失败：{error}")
+            break
+        collected.extend(("new_repos", candidate(item)) for item in items)
+        if len(items) < PER_PAGE:
+            break
+
     seen: set[str] = set()
     repos: list[dict] = []
-    for repo in collected:
+    channels = {"star_bands": 0, "new_repos": 0}
+    for channel, repo in collected:
         key = (repo.get("full_name") or "").lower()
         if not key or key in seen:
             continue
         seen.add(key)
         repos.append(repo)
-    return repos
+        channels[channel] += 1
+    gaps.append(f"新仓库通道贡献 {channels['new_repos']} 条候选")
+    return repos, channels
 
 
 def star_history(full_name: str, day: str) -> int | None:
@@ -181,7 +204,7 @@ def build(day: str, gain_day: str) -> dict:
     baselines = load_baselines(day)
     yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
 
-    candidates = search_candidates(day, gaps)
+    candidates, channels = search_candidates(day, gaps)
     if not candidates:
         raise RuntimeError("搜索 API 未返回任何候选")
 
@@ -194,6 +217,7 @@ def build(day: str, gain_day: str) -> dict:
         "candidates": len(candidates),
         "eligible": len(eligible),
         "dropped_recent_duplicates": dropped_recent_duplicates,
+        "channels": channels,
     }
 
     local_diff = 0

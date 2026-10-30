@@ -23,7 +23,16 @@
       "properties": {
         "candidates": { "type": "integer", "minimum": 0 },
         "eligible": { "type": "integer", "minimum": 0 },
-        "dropped_recent_duplicates": { "type": "integer", "minimum": 0 }
+        "dropped_recent_duplicates": { "type": "integer", "minimum": 0 },
+        "channels": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["star_bands", "new_repos"],
+          "properties": {
+            "star_bands": { "type": "integer", "minimum": 0 },
+            "new_repos": { "type": "integer", "minimum": 0 }
+          }
+        }
       }
     },
     "gaps": { "$ref": "https://knowledge-daily.local/contracts.schema.json#/$defs/gaps" }
