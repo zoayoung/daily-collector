@@ -36,6 +36,9 @@ from _common import (
 
 API = (os.environ.get("KNOWLEDGE_GITHUB_API") or "https://api.github.com").rstrip("/")
 STAR_RANGES = ("100..500", "500..2000", "2000..10000", ">10000")
+CHANNELS = ("star_bands", "new_repos")
+STAR_BANDS_CHANNEL, NEW_REPOS_CHANNEL = CHANNELS
+CHANNEL_LABELS = {STAR_BANDS_CHANNEL: "区间", NEW_REPOS_CHANNEL: "新仓库"}
 NEW_REPOS_MIN_STARS = 50
 NEW_REPOS_WINDOW_DAYS = 30
 MAX_PAGES = 2
@@ -136,7 +139,7 @@ def search_page(query: str, page: int) -> list[dict]:
 
 def search_candidates(
     day: str, gaps: list[str]
-) -> tuple[list[dict], dict[str, int], dict[str, str]]:
+) -> tuple[list[dict], dict[str, str]]:
     cutoff = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
     collected: list[tuple[str, dict]] = []
     for star_range in STAR_RANGES:
@@ -147,7 +150,7 @@ def search_candidates(
             except RuntimeError as error:
                 gaps.append(f"搜索区间 {star_range} 第 {page} 页失败：{error}")
                 break
-            collected.extend(("star_bands", candidate(item)) for item in items)
+            collected.extend((STAR_BANDS_CHANNEL, candidate(item)) for item in items)
             if len(items) < PER_PAGE:
                 break
 
@@ -159,24 +162,21 @@ def search_candidates(
         except RuntimeError as error:
             gaps.append(f"搜索新仓库通道第 {page} 页失败：{error}")
             break
-        collected.extend(("new_repos", candidate(item)) for item in items)
+        collected.extend((NEW_REPOS_CHANNEL, candidate(item)) for item in items)
         if len(items) < PER_PAGE:
             break
 
     seen: set[str] = set()
     repos: list[dict] = []
-    channels = {"star_bands": 0, "new_repos": 0}
-    channel_by_name: dict[str, str] = {}
+    channel_of: dict[str, str] = {}
     for channel, repo in collected:
         key = (repo.get("full_name") or "").lower()
         if not key or key in seen:
             continue
         seen.add(key)
         repos.append(repo)
-        channel_by_name[key] = channel
-        channels[channel] += 1
-    gaps.append(f"新仓库通道贡献 {channels['new_repos']} 条候选")
-    return repos, channels, channel_by_name
+        channel_of[key] = channel
+    return repos, channel_of
 
 
 def star_history(full_name: str, day: str) -> int | None:
@@ -209,7 +209,7 @@ def build(day: str, gain_day: str) -> dict:
     baselines = load_baselines(day)
     yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
 
-    candidates, channels, channel_by_name = search_candidates(day, gaps)
+    candidates, channel_of = search_candidates(day, gaps)
     if not candidates:
         raise RuntimeError("搜索 API 未返回任何候选")
 
@@ -218,6 +218,9 @@ def build(day: str, gain_day: str) -> dict:
     dropped_recent_duplicates = len(candidates) - len(eligible)
     if not eligible:
         raise RuntimeError(f"按 {window_days} 天重复窗口过滤后没有任何候选")
+    channels = {channel: 0 for channel in CHANNELS}
+    for repo in candidates:
+        channels[channel_of[repo["full_name"].lower()]] += 1
     stats = {
         "candidates": len(candidates),
         "eligible": len(eligible),
@@ -237,12 +240,10 @@ def build(day: str, gain_day: str) -> dict:
             repo["stars_today_source"] = "local_diff"
             local_diff += 1
 
-    pending_by_channel: dict[str, list[dict]] = {"star_bands": [], "new_repos": []}
+    pending_by_channel: dict[str, list[dict]] = {channel: [] for channel in CHANNELS}
     for repo in eligible:
         if repo["stars_today_source"] is None:
-            pending_by_channel[channel_by_name.get(repo["full_name"].lower(), "star_bands")].append(
-                repo
-            )
+            pending_by_channel[channel_of[repo["full_name"].lower()]].append(repo)
     pending: list[dict] = []
     queues = {
         channel: deque(
@@ -252,10 +253,10 @@ def build(day: str, gain_day: str) -> dict:
                 reverse=True,
             )
         )
-        for channel in ("star_bands", "new_repos")
+        for channel in CHANNELS
     }
-    while queues["star_bands"] or queues["new_repos"]:
-        for channel in ("star_bands", "new_repos"):
+    while any(queues.values()):
+        for channel in CHANNELS:
             if queues[channel]:
                 pending.append(queues[channel].popleft())
 
@@ -285,16 +286,21 @@ def build(day: str, gain_day: str) -> dict:
         )
     missing = [repo["full_name"] for repo in picked if not repo["url"] or not repo["full_name"]]
 
+    channel_summary = "、".join(
+        f"{CHANNEL_LABELS[channel]} {channels[channel]}" for channel in CHANNELS
+    )
     gaps.insert(
         0,
-        f"候选 {len(candidates)} 个，{window_days} 天窗口剔除 {dropped_recent_duplicates} 个，入榜 {len(picked)} 个",
+        f"候选 {len(candidates)} 个（{channel_summary}），"
+        f"{window_days} 天窗口剔除 {dropped_recent_duplicates} 个，入榜 {len(picked)} 个",
     )
     gaps.append(
         f"star_history 调用 {history_calls} 次（上限 {MAX_HISTORY_CALLS}），失败 {history_failed} 次"
     )
     if skipped > 0:
         gaps.append(
-            f"历史增量预算耗尽（上限 {MAX_HISTORY_CALLS} 次），{skipped} 个候选未计算增量"
+            f"历史增量预算耗尽（上限 {MAX_HISTORY_CALLS} 次），"
+            f"另有 {skipped} 个候选未尝试计算增量"
         )
     if len(ranked) > len(picked):
         gaps.append(f"未纳入 {len(ranked) - len(picked)} 个候选（排名在 {PICK_LIMIT} 之后）")

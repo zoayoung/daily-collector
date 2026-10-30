@@ -10,27 +10,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.support import NEW_REPOS_CHANNEL, FixtureServer, run_cli
+from tests.support import (
+    NEW_REPOS_CHANNEL,
+    FixtureServer,
+    empty_search_pages,
+    run_cli,
+    search_item,
+)
 
 DAY = "2026-10-21"
-RANGES = ("100..500", "500..2000", "2000..10000", ">10000")
-
-
-def item(full_name: str, stars: int) -> dict:
-    return {
-        "full_name": full_name,
-        "html_url": f"https://github.com/{full_name}",
-        "description": "示例项目",
-        "language": "Go",
-        "stargazers_count": stars,
-        "forks_count": 10,
-        "created_at": "2020-01-01T00:00:00Z",
-        "pushed_at": "2026-10-21T00:00:00Z",
-    }
-
-
-def empty_pages() -> dict[tuple[str, int], object]:
-    return {(star_range, 1): [] for star_range in RANGES}
 
 
 def history_names(requests: list[str]) -> list[str]:
@@ -68,9 +56,9 @@ class HistoryBudgetRotationTest(unittest.TestCase):
         return json.loads(path.read_text(encoding="utf-8")), requests
 
     def test_pending_candidates_rotate_between_channels(self) -> None:
-        pages = empty_pages()
-        pages[("100..500", 1)] = [item("Band/High", 5000), item("Band/Mid", 4000)]
-        pages[(NEW_REPOS_CHANNEL, 1)] = [item("New/Low", 60), item("New/High", 400)]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item("Band/High", 5000), search_item("Band/Mid", 4000)]
+        pages[(NEW_REPOS_CHANNEL, 1)] = [search_item("New/Low", 60), search_item("New/High", 400)]
 
         data, requests = self.collect(pages)
 
@@ -85,12 +73,12 @@ class HistoryBudgetRotationTest(unittest.TestCase):
         self.assertTrue(all(entry["stars_today"] == 152 for entry in data["github"]))
 
     def test_low_star_new_repo_gains_before_large_band_pool(self) -> None:
-        pages = empty_pages()
-        pages[("100..500", 1)] = [item(f"band/repo{index:03d}", 10000 - index) for index in range(100)]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item(f"band/repo{index:03d}", 10000 - index) for index in range(100)]
         pages[("100..500", 2)] = [
-            item(f"band/repo{index:03d}", 9000 - index) for index in range(100, 200)
+            search_item(f"band/repo{index:03d}", 9000 - index) for index in range(100, 200)
         ]
-        pages[(NEW_REPOS_CHANNEL, 1)] = [item("new/low", 50)]
+        pages[(NEW_REPOS_CHANNEL, 1)] = [search_item("new/low", 50)]
         baseline = self.work / "2026-10-20" / "collect.json"
         baseline.parent.mkdir(parents=True)
         baseline.write_text(
@@ -117,10 +105,10 @@ class HistoryBudgetRotationTest(unittest.TestCase):
         self.assertEqual(data["github"][0]["stars_today"], 152)
 
     def test_local_diff_candidates_do_not_consume_budget(self) -> None:
-        pages = empty_pages()
-        pages[("100..500", 1)] = [item(f"owner/repo{index:03d}", 900 - index) for index in range(100)]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item(f"owner/repo{index:03d}", 900 - index) for index in range(100)]
         pages[("100..500", 2)] = [
-            item(f"owner/repo{index:03d}", 800 - index) for index in range(100, 160)
+            search_item(f"owner/repo{index:03d}", 800 - index) for index in range(100, 160)
         ]
         baseline = self.work / "2026-10-20" / "collect.json"
         baseline.parent.mkdir(parents=True)
@@ -143,23 +131,44 @@ class HistoryBudgetRotationTest(unittest.TestCase):
         self.assertTrue(any("star_history 调用 150 次（上限 150）" in gap for gap in data["gaps"]))
 
     def test_budget_exhaustion_is_explained_in_gaps(self) -> None:
-        pages = empty_pages()
-        pages[("100..500", 1)] = [item(f"owner/repo{index:03d}", 900 - index) for index in range(100)]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item(f"owner/repo{index:03d}", 900 - index) for index in range(100)]
         pages[("100..500", 2)] = [
-            item(f"owner/repo{index:03d}", 800 - index) for index in range(100, 170)
+            search_item(f"owner/repo{index:03d}", 800 - index) for index in range(100, 170)
         ]
 
         data, requests = self.collect(pages)
 
         self.assertEqual(len(history_names(requests)), 150)
         self.assertTrue(
-            any("预算耗尽" in gap and "20 个候选未计算增量" in gap for gap in data["gaps"]),
+            any("预算耗尽" in gap and "20 个候选未尝试计算增量" in gap for gap in data["gaps"]),
             data["gaps"],
         )
 
+    def test_failed_history_calls_are_not_counted_as_untried(self) -> None:
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [
+            search_item(f"owner/repo{index:03d}", 900 - index) for index in range(100)
+        ]
+        pages[("100..500", 2)] = [
+            search_item(f"owner/repo{index:03d}", 800 - index) for index in range(100, 171)
+        ]
+
+        data, requests = self.collect(pages, history_failures={"owner/repo000"})
+
+        self.assertEqual(len(history_names(requests)), 150)
+        self.assertTrue(any("失败 1 次" in gap for gap in data["gaps"]), data["gaps"])
+        self.assertTrue(
+            any("另有 21 个候选未尝试计算增量" in gap for gap in data["gaps"]),
+            data["gaps"],
+        )
+        self.assertFalse(
+            any("21 个候选未计算增量" in gap for gap in data["gaps"]), data["gaps"]
+        )
+
     def test_history_failure_is_recorded_and_leaves_candidate_null(self) -> None:
-        pages = empty_pages()
-        pages[("100..500", 1)] = [item("owner/fail", 600), item("owner/keep", 500)]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item("owner/fail", 600), search_item("owner/keep", 500)]
 
         data, _ = self.collect(pages, history_failures={"owner/fail"})
 
