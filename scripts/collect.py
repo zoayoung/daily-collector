@@ -16,6 +16,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import deque
 from datetime import UTC, date, datetime, timedelta
 from http.client import IncompleteRead
 from pathlib import Path
@@ -39,7 +40,7 @@ NEW_REPOS_MIN_STARS = 50
 NEW_REPOS_WINDOW_DAYS = 30
 MAX_PAGES = 2
 PER_PAGE = 100
-MAX_HISTORY_CALLS = 100
+MAX_HISTORY_CALLS = 150
 PICK_LIMIT = 50
 
 
@@ -133,7 +134,9 @@ def search_page(query: str, page: int) -> list[dict]:
     return payload.get("items", [])
 
 
-def search_candidates(day: str, gaps: list[str]) -> tuple[list[dict], dict[str, int]]:
+def search_candidates(
+    day: str, gaps: list[str]
+) -> tuple[list[dict], dict[str, int], dict[str, str]]:
     cutoff = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
     collected: list[tuple[str, dict]] = []
     for star_range in STAR_RANGES:
@@ -163,15 +166,17 @@ def search_candidates(day: str, gaps: list[str]) -> tuple[list[dict], dict[str, 
     seen: set[str] = set()
     repos: list[dict] = []
     channels = {"star_bands": 0, "new_repos": 0}
+    channel_by_name: dict[str, str] = {}
     for channel, repo in collected:
         key = (repo.get("full_name") or "").lower()
         if not key or key in seen:
             continue
         seen.add(key)
         repos.append(repo)
+        channel_by_name[key] = channel
         channels[channel] += 1
     gaps.append(f"新仓库通道贡献 {channels['new_repos']} 条候选")
-    return repos, channels
+    return repos, channels, channel_by_name
 
 
 def star_history(full_name: str, day: str) -> int | None:
@@ -204,7 +209,7 @@ def build(day: str, gain_day: str) -> dict:
     baselines = load_baselines(day)
     yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
 
-    candidates, channels = search_candidates(day, gaps)
+    candidates, channels, channel_by_name = search_candidates(day, gaps)
     if not candidates:
         raise RuntimeError("搜索 API 未返回任何候选")
 
@@ -232,12 +237,28 @@ def build(day: str, gain_day: str) -> dict:
             repo["stars_today_source"] = "local_diff"
             local_diff += 1
 
-    pending = [
-        repo
-        for repo in eligible
-        if repo["stars_today_source"] is None
-    ]
-    pending.sort(key=lambda repo: repo["stars_total"] or 0, reverse=True)
+    pending_by_channel: dict[str, list[dict]] = {"star_bands": [], "new_repos": []}
+    for repo in eligible:
+        if repo["stars_today_source"] is None:
+            pending_by_channel[channel_by_name.get(repo["full_name"].lower(), "star_bands")].append(
+                repo
+            )
+    pending: list[dict] = []
+    queues = {
+        channel: deque(
+            sorted(
+                pending_by_channel[channel],
+                key=lambda repo: repo["stars_total"] or 0,
+                reverse=True,
+            )
+        )
+        for channel in ("star_bands", "new_repos")
+    }
+    while queues["star_bands"] or queues["new_repos"]:
+        for channel in ("star_bands", "new_repos"):
+            if queues[channel]:
+                pending.append(queues[channel].popleft())
+
     for repo in pending:
         if history_calls >= MAX_HISTORY_CALLS:
             break
@@ -249,6 +270,7 @@ def build(day: str, gain_day: str) -> dict:
             continue
         repo["stars_today"] = value
         repo["stars_today_source"] = "star_history"
+    skipped = len(pending) - history_calls
 
     with_gain = [repo for repo in eligible if repo["stars_today"] is not None]
     all_zero_gain = not any(repo["stars_today"] for repo in with_gain)
@@ -270,6 +292,10 @@ def build(day: str, gain_day: str) -> dict:
     gaps.append(
         f"star_history 调用 {history_calls} 次（上限 {MAX_HISTORY_CALLS}），失败 {history_failed} 次"
     )
+    if skipped > 0:
+        gaps.append(
+            f"历史增量预算耗尽（上限 {MAX_HISTORY_CALLS} 次），{skipped} 个候选未计算增量"
+        )
     if len(ranked) > len(picked):
         gaps.append(f"未纳入 {len(ranked) - len(picked)} 个候选（排名在 {PICK_LIMIT} 之后）")
     if picked and not any(repo["stars_today"] for repo in picked):

@@ -64,6 +64,7 @@ class FixtureServer:
 
     search_failures 按 (通道, 页码) 指定要返回的 HTTP 状态码，用于模拟单通道失败。
     star_history_body 可覆盖 star 历史响应，用于模拟当天增量尚未产生的全 0 返回。
+    history_failures 指定要返回 500 的仓库 full_name，用于模拟单条历史查询失败。
     """
 
     def __init__(
@@ -72,11 +73,13 @@ class FixtureServer:
         search_pages: dict[tuple[str, int], object] | None = None,
         search_failures: dict[tuple[str, int], int] | None = None,
         star_history_body: object | None = None,
+        history_failures: set[str] | None = None,
     ) -> None:
         self.break_first_search = break_first_search
         self.search_pages = search_pages or {}
         self.search_failures = search_failures or {}
         self.star_history_body = star_history_body
+        self.history_failures = history_failures or set()
         self.requests: list[str] = []
         self._search_requests = 0
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
@@ -115,6 +118,14 @@ class FixtureServer:
                     body = outer._search_body(self.path)
                     broken = outer.break_first_search and outer._search_requests == 1
                 elif "/stargazers/history" in self.path:
+                    full_name = self.path.split("/repos/", 1)[-1].split(
+                        "/stargazers", 1
+                    )[0]
+                    if full_name in outer.history_failures:
+                        self.send_response(500)
+                        self.send_header("Content-Length", "0")
+                        self.end_headers()
+                        return
                     if outer.star_history_body is None:
                         body = fixture_bytes("star_history.json")
                     else:

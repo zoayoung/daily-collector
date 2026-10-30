@@ -170,17 +170,17 @@ class CandidatePoolTest(unittest.TestCase):
         self.assertTrue(all(entry["stars_today_source"] == "local_diff" for entry in data["github"]))
         self.assertFalse([path for path in requests if "/stargazers/history" in path])
 
-    def test_star_history_fallback_is_capped_at_one_hundred_calls(self) -> None:
+    def test_star_history_fallback_is_capped_at_one_hundred_fifty_calls(self) -> None:
         pages = empty_pages()
         pages[("100..500", 1)] = [item(f"owner/repo{i:03d}", 900 - i) for i in range(100)]
-        pages[("100..500", 2)] = [item(f"owner/repo{i:03d}", 800 - i) for i in range(20)]
+        pages[("100..500", 2)] = [item(f"owner/repo{i:03d}", 800 - i) for i in range(100, 160)]
 
         data, requests = self.collect(pages)
 
         history_calls = [path for path in requests if "/stargazers/history" in path]
-        self.assertEqual(len(history_calls), 100)
+        self.assertEqual(len(history_calls), 150)
         self.assertEqual(len(data["github"]), 50)
-        self.assertTrue(any("star_history 调用 100 次" in gap for gap in data["gaps"]))
+        self.assertTrue(any("star_history 调用 150 次" in gap for gap in data["gaps"]))
 
     def test_reports_self_consistent_candidate_stats_after_window_filter(self) -> None:
         self.output.mkdir(parents=True)
