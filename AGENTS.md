@@ -15,7 +15,7 @@
 
 ## 自动运行
 
-GitHub Actions 每个自然日 08:00（UTC+8）无头运行同一套流程，发布当天日报、数据归属前一日，工作流见 `.github/workflows/daily-knowledge.yml`；触发、参数、幂等、失败与冒烟口径见 spec 的「自动运行」「CI 参数/凭证/幂等/失败/并发/冒烟」节。
+GitHub Actions 每个自然日清晨 06:00（UTC+8）起无头运行同一套流程，发布当天日报、数据归属前一日，工作流见 `.github/workflows/daily-knowledge.yml`；目标 08:00 前完成（GitHub 定时为 best-effort，两班非整点抢发）；触发、参数、幂等、失败与冒烟口径见 spec 的「自动运行」「CI 参数/凭证/幂等/失败/并发/冒烟」节。
 
 - 手动触发支持 `force` 覆盖；发布日日报已存在时的跳过与覆盖口径见 spec 的「CI 幂等」。
 - 成功后只提交 `daily-knowledge/` 与发布日 `work/YYYY-MM-DD/collect.json`；其余中间产物不入库。

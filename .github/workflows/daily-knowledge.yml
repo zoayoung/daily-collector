@@ -2,9 +2,14 @@ name: daily-knowledge
 
 on:
   schedule:
-    # GitHub Actions 的 cron 按 UTC；00:00 UTC = 08:00 UTC+8。
-    # 08:00 发布当天日报，数据归属前一个完整自然日（UTC+8）。
-    - cron: "0 0 * * *"
+    # GitHub Actions 的 cron 按 UTC，且只是 best-effort：整点高负载时会被推迟数小时，
+    # 甚至整条丢弃（曾出现 00:00 UTC 班次晚 4 小时才创建）。
+    # 因此清晨排两班非整点抢发，靠下面的幂等检查保证同一天只发布一次：
+    #   22:07 UTC = 06:07 UTC+8
+    #   22:47 UTC = 06:47 UTC+8
+    # 目标窗口 06:00–08:00（daily 超时 45 分钟）；两班都被推迟时照常发布，并在摘要标注超窗。
+    - cron: "7 22 * * *"
+    - cron: "47 22 * * *"
   workflow_dispatch:
     inputs:
       force:
@@ -41,8 +46,12 @@ jobs:
         run: |
           DATE=$(TZ=Asia/Shanghai date +%F)
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            # 早上 8 点发布，数据归属前一个完整自然日
+            # 清晨窗口：06:00 起两班抢发，数据归属前一个完整自然日
             GAIN_DATE=$(TZ=Asia/Shanghai date -d "$DATE -1 day" +%F)
+            NOW_HM=$(TZ=Asia/Shanghai date +%H%M)
+            if (( 10#$NOW_HM > 800 )); then
+              echo "超窗：本次于 $(TZ=Asia/Shanghai date +%H:%M) 才被调度，已过 08:00 窗口，仍照常发布。" >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
             # 手动触发与本地一致，发布日和数据归属日都是当天
             GAIN_DATE="$DATE"
@@ -72,7 +81,8 @@ jobs:
     needs: guard
     if: needs.guard.outputs.skip == 'false'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 单班必须在 06:00–08:00 窗口内出结论（正常一跑 7–9 分钟）
+    timeout-minutes: 45
     env:
       TZ: Asia/Shanghai
       OPENCODE_DISABLE_AUTOUPDATE: "1"

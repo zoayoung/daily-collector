@@ -2,7 +2,7 @@
 
 **Feature:** knowledge-daily
 **Status:** ready-for-agent
-**Updated:** 2026-10-23
+**Updated:** 2026-10-24
 
 ## 问题陈述
 
@@ -18,7 +18,7 @@
 - **整理（子代理）**：职责分离后的定稿者——从分析结果中定稿 10–15 条、润色为成稿、定排序与概览，写 `organize.json`；批量剔除时记数并按批次说明理由。
 - **渲染（主代理）**：按固定模板把 `organize.json` 机械填充为 `daily-knowledge/YYYY-MM-DD.md`，不改写文字；每条附总 star、数据归属日新增 star 与质量评分。
 - **质量与成本**：`schemas/` 是字段唯一来源，`scripts/validate.py` 做契约校验与 30 天窗口硬校验；`.opencode/plugins/` 的 hook 在整理产物落盘后调 `scripts/score.py` 做 5 维打分并写 `score.json`，低于 60 分打回重来；token 插件聚合消耗，同时写 `daily-knowledge/tokens/YYYY-MM-DD.md` 供人阅读。
-- **自动发布（GitHub Actions）**：每天 00:00 UTC（08:00 UTC+8）无头运行同一套流水线，发布当天（UTC+8）的日报、数据归属于前一日，把日报、token 报告与每日 `collect.json` 提交回公开仓库 `zoayoung/daily-collector` 的 `main` 分支。
+- **自动发布（GitHub Actions）**：每天清晨 06:00（UTC+8）起两班非整点抢发，无头运行同一套流水线，发布当天（UTC+8）的日报、数据归属于前一日，目标 08:00 前完成；把日报、token 报告与每日 `collect.json` 提交回公开仓库 `zoayoung/daily-collector` 的 `main` 分支。
 - 中间产物按天落在 `work/YYYY-MM-DD/`（仅每日 `collect.json` 进 git，其余本地保留）。
 
 ## 用户故事
@@ -100,7 +100,7 @@
 75. 作为读者，我希望 token 报告按 run 与代理拆分并给出当日合计，以便定位成本大头。
 76. 作为维护者，我希望 token 报告在每次运行后自动生成，以便不靠手工整理。
 77. 作为维护者，我希望 token 报告随日报一起提交，以便成本历史与产出放在同一处。
-78. 作为维护者，我希望流水线每天 08:00（UTC+8）由 GitHub Actions 自动运行并发布当天日报（数据归属前一日），以便不需要每天手工触发。
+78. 作为维护者，我希望流水线每天清晨 06:00（UTC+8）起由 GitHub Actions 自动运行、08:00 前完成并发布当天日报（数据归属前一日），以便不需要每天手工触发。
 79. 作为维护者，我希望同一套流水线仍能在本地手动触发，以便调试与补跑。
 80. 作为维护者，我希望 CI 复用采集、分析、整理、渲染四段，以便线上与本地行为不分叉。
 81. 作为维护者，我希望 CI 在发布日日报已存在时跳过，以便定时任务幂等。
@@ -145,10 +145,10 @@
 - 日报展示：每条元信息行固定为「Star：总数（今日 +增量）· 评分：总分 / 等级」；评分来自当日 `score.json`，按 `rank` 与 `full_name` 同时匹配；缺失处理与标题下行见「编排协议 · 渲染模板」。
 - 产物目录：日报与 token 报告落在 `daily-knowledge/`，日报文件名为 `YYYY-MM-DD.md`；历史日报是该目录下的去重依据。默认目录可用 `KNOWLEDGE_OUTPUT_DIR` 覆盖。
 - token 报告：`.opencode/plugins/token-stats.js` 在刷新 `work/YYYY-MM-DD/tokens.json` 后，同时写 `daily-knowledge/tokens/YYYY-MM-DD.md`；文件名取发布日，数据归属日与发布日不同时在正文标注统计窗口行（口径见「渲染模板」节）。内容按 run、按代理列出与 `tokens.json` 相同的字段，并给出当日合计。日期取 `KNOWLEDGE_DATE`，统计窗口依据 `KNOWLEDGE_GAIN_DATE`，未设置时取本地今天。
-- 自动运行：GitHub Actions 每日 00:00 UTC（08:00 UTC+8）触发，发布日为运行日，数据归属为运行日前一天（UTC+8）；`ubuntu-latest`；步骤为检出 → 计算发布日与数据归属日 → 安装 uv 与 Node → 同步依赖 → 跑单元测试 → 安装锁定版本的 opencode → 无头执行 `opencode run --auto "开始知识采集；发布日 <发布日>；数据归属 <数据归属日>"` → 校验产物 → 提交回写。
+- 自动运行：GitHub Actions 在 22:07 与 22:47 UTC（06:07、06:47 UTC+8）各排一班，发布日为运行日，数据归属为运行日前一天（UTC+8）；目标窗口 06:00–08:00，`daily` 超时 45 分钟。GitHub 的 `schedule` 按 UTC 墙钟且为 best-effort：整点高负载时会被推迟数小时甚至整条丢弃，故用两班非整点抢发、靠幂等检查保证当天只发布一次；两班都被推迟时照常发布并在运行摘要标注「超窗」。`ubuntu-latest`；步骤为检出 → 计算发布日与数据归属日 → 安装 uv 与 Node → 同步依赖 → 跑单元测试 → 安装锁定版本的 opencode → 无头执行 `opencode run --auto "开始知识采集；发布日 <发布日>；数据归属 <数据归属日>"` → 校验产物 → 提交回写。
 - CI 参数：opencode 以 `@opencode/cli@2.0.26` 安装（`opencode-ai` 是 1.x 包，勿混用），所有代理统一使用 `oc-go/deepseek-v4.1-flash`；仓库内 `opencode.json` 固定 provider `oc-go` 与默认模型，`apiKey` 用 `{env:OC_GO_API_KEY}` 占位。
 - CI 凭证：模型密钥只放在仓库 Secret `OC_GO_API_KEY`；采集与回写共用 Actions 自带的 `GITHUB_TOKEN`（`permissions.contents: write`），不额外配置 Personal Access Token。
-- CI 幂等：启动 opencode 前检查发布日 `daily-knowledge/<发布日>.md`；存在且 `force=false` 则跳过并退出 0，`force=true` 按「重新采集并覆盖」执行。定时任务的发布日为运行日、数据归属为前一天；手动 dispatch 的发布日与数据归属都是当天。
+- CI 幂等：启动 opencode 前检查发布日 `daily-knowledge/<发布日>.md`；存在且 `force=false` 则跳过并退出 0，`force=true` 按「重新采集并覆盖」执行。定时任务的发布日为运行日、数据归属为前一天；手动 dispatch 的发布日与数据归属都是当天。两班定时与手动触发共用同一幂等检查，先到者发布、后到者跳过。
 - CI 失败：不自动重试；把 `work/<发布日>/` 上传为 artifact，不提交半成品，最后一份已发布日报保持原样。
 - CI 并发：同一 workflow 使用单一并发组，避免定时与手动触发重叠。
 - CI 冒烟（交付门槛）：先在临时分支 `ci-smoke` 推送并 `workflow_dispatch` 真实跑通，覆盖 `force=true` 全流程与 `force=false` 跳过两种情形，再合并 `main`；不以 `act` 或本地 runner 代替真实 Actions。
@@ -158,7 +158,7 @@
 - 30 天重复窗口：以 `daily-knowledge/*.md` 中已发布的项目为准（读取 `### N. owner/repo` 标题行，大小写不敏感），窗口为 `[发布日-30, 发布日-1]`，**不含发布日**；窗口内出现过的项目零例外剔除。同日重跑不把发布日当天已发布内容当历史。
 - 采集过滤与计数：候选先去重，再按 30 天窗口剔除，剩余为 `eligible`；`dropped_recent_duplicates` 记录被剔除数。`collect.json` 新增可选 `stats: { candidates, eligible, dropped_recent_duplicates }`，旧产物无此字段仍有效。
 - 采集异常：未配置 `GITHUB_TOKEN`、所有搜索均失败、过滤后候选为空即脚本失败（退出码非 0、不写正式文件）；`star_history` 单次失败记 `gaps` 并把该条记 null。
-- 新增 star 口径：基线取 `work/**/collect.json` 中**日期早于发布日的最近一次**该 repo 的 `stars_total`；仅当基线恰为**发布日的上一自然日**时才用于差分（同日重跑不会读到自身产物）。优先级：① 本地差分 `stars_today_source=local_diff`；② 官方兜底 `GET /repos/{owner}/{repo}/stargazers/history`，按**数据归属日**查、按 `stars_total` 降序依次兜底，总量 ≤100 次/轮，`stars_today_source=star_history`；③ 都不可得记 null。定时任务在 08:00 取数据归属日为发布日前一天：`stargazers/history` 按该日历日查；本地差分以上一发布日的 `collect.json` 为基线，窗口是上次采集到本次采集（约 24 小时），与日历日归属窗口错开 8 小时，仅在拿不到 star 历史时作近似。
+- 新增 star 口径：基线取 `work/**/collect.json` 中**日期早于发布日的最近一次**该 repo 的 `stars_total`；仅当基线恰为**发布日的上一自然日**时才用于差分（同日重跑不会读到自身产物）。优先级：① 本地差分 `stars_today_source=local_diff`；② 官方兜底 `GET /repos/{owner}/{repo}/stargazers/history`，按**数据归属日**查、按 `stars_total` 降序依次兜底，总量 ≤100 次/轮，`stars_today_source=star_history`；③ 都不可得记 null。定时任务在清晨 06:00（UTC+8）窗口取数，数据归属日为发布日前一天：`stargazers/history` 按该日历日查；本地差分以上一发布日的 `collect.json` 为基线，窗口是上次采集到本次采集（约 24 小时，起点落在清晨），与日历日归属窗口错开约 6 小时，仅在拿不到 star 历史时作近似。
 - 排序与选取：在 `eligible` 中丢弃 `stars_today=null` 的候选，其余按 `stars_today` 降序取前 50；不足 50 按实际数量输出，不足 10 在 `gaps` 说明。
 - 认证（必填）：脚本从进程环境或项目根 `.env` 读取 `GITHUB_TOKEN`（兼容 `GH_TOKEN`），进程环境优先；缺失即失败，不退回未认证。`.env` 由脚本自行加载（opencode 不自动注入），`.env` 已被 git 忽略，模板见 `.env.example`。认证后配额：搜索 30 次/分、核心 5000 次/时。
 - 分析阶段：为 `collect.json` 的全部条目（通常 50 条）做自由标签与 `core`/`why` 分析要点；只给 30 天外再次出现的项目写 `repeat.last_seen`，**不再剔除 30 天内项目**。**不决定入选条数、不写 `rank`/`overview`**。`core`/`why` 为分析要点，不设 100 汉字硬限。
@@ -578,7 +578,7 @@
 
 - 标签由分析阶段自由生成；若将来需要引导，在技能正文里加「标签建议」，不恢复白名单。
 - 30 天重复窗口是硬规则：窗口内零例外，窗口外才标 `🔁`；判断依据只看已发布日报，不看未发布的采集产物。
-- 自动运行配置：在 GitHub 仓库 `Settings → Secrets and variables → Actions` 添加 `OC_GO_API_KEY`；定时为 `0 0 * * *` UTC（08:00 UTC+8，发布当天日报，数据归属前一日）；手动 dispatch 的 `force` 用于覆盖当天。
+- 自动运行配置：在 GitHub 仓库 `Settings → Secrets and variables → Actions` 添加 `OC_GO_API_KEY`；定时为 `7 22 * * *` 与 `47 22 * * *` UTC（06:07、06:47 UTC+8，两班抢发、目标 08:00 前完成，发布当天日报，数据归属前一日）；手动 dispatch 的 `force` 用于覆盖当天。
 - 定时任务的发布日通过 `KNOWLEDGE_DATE`、数据归属日通过 `KNOWLEDGE_GAIN_DATE` 贯穿工作流、采集脚本与 token 插件；手动触发也注入这两个变量，但值都取当天；本地运行不设置这两个变量，两者都取本地今天。
 - 本地推送使用 `~/.ssh/git`；CI 使用自带 `GITHUB_TOKEN`，不需要 Personal Access Token。
 - 本 spec 落在 local markdown tracker：`.scratch/knowledge-daily/spec.md`；tracker 配置见 `docs/agents/issue-tracker.md`。
