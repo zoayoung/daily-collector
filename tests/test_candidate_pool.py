@@ -6,17 +6,15 @@
 from __future__ import annotations
 
 import json
-import tempfile
 import unittest
 from datetime import UTC, datetime
-from pathlib import Path
 
 from tests.support import (
+    EXPECTED_STAR_RANGES,
     NEW_REPOS_CHANNEL,
-    SEARCH_RANGES,
-    FixtureServer,
+    CliCase,
+    collect_document,
     empty_search_pages,
-    run_cli,
     search_item,
     search_request,
 )
@@ -24,30 +22,7 @@ from tests.support import (
 DAY = "2026-10-21"
 
 
-class CandidatePoolTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp.cleanup)
-        self.work = Path(self._tmp.name) / "work"
-        self.output = Path(self._tmp.name) / "daily-knowledge"
-
-    def collect(
-        self, search_pages: dict[tuple[str, int], object], **kwargs: object
-    ) -> tuple[dict, list[str]]:
-        with FixtureServer(search_pages=search_pages, **kwargs) as server:
-            result = run_cli(
-                "collect.py",
-                "--date",
-                DAY,
-                work_dir=self.work,
-                output_dir=self.output,
-                api=server.url,
-            )
-            requests = list(server.requests)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        path = self.work / DAY / "collect.json"
-        return json.loads(path.read_text(encoding="utf-8")), requests
-
+class CandidatePoolTest(CliCase):
     def test_searches_four_star_ranges_and_dedupes_by_full_name(self) -> None:
         pages = empty_search_pages()
         pages[("100..500", 1)] = [search_item("Alpha/One", 100), search_item("Shared/Repo", 200)]
@@ -64,7 +39,7 @@ class CandidatePoolTest(unittest.TestCase):
             for path in requests
             if path.startswith("/search/repositories")
         }
-        self.assertEqual(searched, set(SEARCH_RANGES) | {NEW_REPOS_CHANNEL})
+        self.assertEqual(searched, set(EXPECTED_STAR_RANGES) | {NEW_REPOS_CHANNEL})
 
     def searches_in_range(self, requests: list[str], star_range: str) -> list[int]:
         return sorted(
@@ -199,59 +174,13 @@ class CandidatePoolTest(unittest.TestCase):
         self.assertGreaterEqual(data["stats"]["eligible"], len(data["github"]))
 
 
-class CollectStatsValidationTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp.cleanup)
-        self.work = Path(self._tmp.name) / "work"
-        self.output = Path(self._tmp.name) / "daily-knowledge"
-
-    def write(self, day: str, document: dict) -> Path:
-        path = self.work / day / "collect.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
-        return path
-
-    def collect_document(self, day: str, stats: dict | None) -> dict:
-        repo = search_item("owner/repo", 120)
-        document = {
-            "date": day,
-            "collected_at": f"{day} 08:00",
-            "github": [
-                {
-                    "full_name": repo["full_name"],
-                    "url": repo["html_url"],
-                    "description": repo["description"],
-                    "language": repo["language"],
-                    "stars_total": repo["stargazers_count"],
-                    "stars_today": 12,
-                    "stars_today_source": "star_history",
-                    "forks": repo["forks_count"],
-                    "created_at": "2020-01-01",
-                    "pushed_at": "2026-10-21",
-                }
-            ],
-            "gaps": [],
-        }
-        if stats is not None:
-            document["stats"] = stats
-        return document
-
-    def validate(self, *args: str) -> object:
-        return run_cli(
-            "validate.py",
-            *args,
-            work_dir=self.work,
-            output_dir=self.output,
-        )
-
+class CollectStatsValidationTest(CliCase):
     def test_inconsistent_stats_are_rejected(self) -> None:
-        path = self.write(
-            "2026-10-21",
-            self.collect_document(
-                "2026-10-21",
+        path = self.write_collect(
+            collect_document(
+                DAY,
                 {"candidates": 5, "eligible": 4, "dropped_recent_duplicates": 0},
-            ),
+            )
         )
 
         result = self.validate("--file", str(path))
@@ -260,7 +189,7 @@ class CollectStatsValidationTest(unittest.TestCase):
         self.assertIn("stats", result.stdout)
 
     def test_old_collect_without_stats_still_passes_all(self) -> None:
-        self.write("2026-10-20", self.collect_document("2026-10-20", None))
+        self.write_collect(collect_document("2026-10-20"), "2026-10-20")
 
         result = self.validate("--all")
 

@@ -11,7 +11,9 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
+import unittest
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -19,7 +21,9 @@ from typing import Self
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
-SEARCH_RANGES = ("100..500", "500..2000", "2000..10000", ">10000")
+DEFAULT_DAY = "2026-10-21"
+# 测试侧的预期区间集合：与生产常量独立书写，生产区间被改动时这里会失败。
+EXPECTED_STAR_RANGES = ("100..500", "500..2000", "2000..10000", ">10000")
 NEW_REPOS_CHANNEL = "new_repos"
 
 
@@ -44,7 +48,21 @@ def search_item(full_name: str, stars: int, created_at: str = "2020-01-01T00:00:
 
 def empty_search_pages() -> dict[tuple[str, int], object]:
     """让所有 star 区间的第一页回放空列表，只有显式覆盖的通道才有候选。"""
-    return {(star_range, 1): [] for star_range in SEARCH_RANGES}
+    return {(star_range, 1): [] for star_range in EXPECTED_STAR_RANGES}
+
+
+def star_history_name(path: str) -> str:
+    """从 star 历史请求路径解析仓库 full_name。"""
+    return path.split("/repos/", 1)[1].split("/stargazers", 1)[0]
+
+
+def history_names(requests: list[str]) -> list[str]:
+    """按请求顺序返回被查询 star 历史的仓库 full_name。"""
+    return [
+        star_history_name(path)
+        for path in requests
+        if "/stargazers/history" in path
+    ]
 
 
 def fixture_bytes(name: str) -> bytes:
@@ -138,9 +156,7 @@ class FixtureServer:
                     body = outer._search_body(self.path)
                     broken = outer.break_first_search and outer._search_requests == 1
                 elif "/stargazers/history" in self.path:
-                    full_name = self.path.split("/repos/", 1)[-1].split(
-                        "/stargazers", 1
-                    )[0]
+                    full_name = star_history_name(self.path)
                     if full_name in outer.history_failures:
                         self.send_response(500)
                         self.send_header("Content-Length", "0")
@@ -237,6 +253,77 @@ def render_report(
             ]
         )
     return "\n".join(lines)
+
+
+def collect_document(day: str, stats: dict | None = None) -> dict:
+    """构造一份最小的合法 collect.json，用于契约校验测试。"""
+    repo = search_item("owner/repo", 120)
+    document = {
+        "date": day,
+        "collected_at": f"{day} 08:00",
+        "github": [
+            {
+                "full_name": repo["full_name"],
+                "url": repo["html_url"],
+                "description": repo["description"],
+                "language": repo["language"],
+                "stars_total": repo["stargazers_count"],
+                "stars_today": 12,
+                "stars_today_source": "star_history",
+                "forks": repo["forks_count"],
+                "created_at": "2020-01-01",
+                "pushed_at": day,
+            }
+        ],
+        "gaps": [],
+    }
+    if stats is not None:
+        document["stats"] = stats
+    return document
+
+
+class CliCase(unittest.TestCase):
+    """CLI 黑盒测试基类：隔离目录，复用采集、写产物与校验调用。"""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.work = Path(self._tmp.name) / "work"
+        self.output = Path(self._tmp.name) / "daily-knowledge"
+
+    def collect(
+        self,
+        search_pages: dict[tuple[str, int], object],
+        day: str = DEFAULT_DAY,
+        **kwargs: object,
+    ) -> tuple[dict, list[str]]:
+        with FixtureServer(search_pages=search_pages, **kwargs) as server:
+            result = run_cli(
+                "collect.py",
+                "--date",
+                day,
+                work_dir=self.work,
+                output_dir=self.output,
+                api=server.url,
+            )
+            requests = list(server.requests)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path = self.work / day / "collect.json"
+        return json.loads(path.read_text(encoding="utf-8")), requests
+
+    def write_collect(self, document: dict, day: str = DEFAULT_DAY) -> Path:
+        path = self.work / day / "collect.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+        return path
+
+    def validate(self, *args: str) -> subprocess.CompletedProcess[str]:
+        return run_cli(
+            "validate.py",
+            *args,
+            work_dir=self.work,
+            output_dir=self.output,
+        )
 
 
 def run_cli(

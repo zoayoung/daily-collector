@@ -5,17 +5,14 @@
 
 from __future__ import annotations
 
-import json
-import tempfile
 import unittest
 import urllib.parse
-from pathlib import Path
 
 from tests.support import (
     NEW_REPOS_CHANNEL,
-    FixtureServer,
+    CliCase,
+    collect_document,
     empty_search_pages,
-    run_cli,
     search_item,
     search_request,
 )
@@ -28,30 +25,7 @@ def query_of(path: str) -> dict[str, list[str]]:
     return urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
 
 
-class NewRepoChannelTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp.cleanup)
-        self.work = Path(self._tmp.name) / "work"
-        self.output = Path(self._tmp.name) / "daily-knowledge"
-
-    def collect(
-        self, search_pages: dict[tuple[str, int], object], **kwargs: object
-    ) -> tuple[dict, list[str]]:
-        with FixtureServer(search_pages=search_pages, **kwargs) as server:
-            result = run_cli(
-                "collect.py",
-                "--date",
-                DAY,
-                work_dir=self.work,
-                output_dir=self.output,
-                api=server.url,
-            )
-            requests = list(server.requests)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        path = self.work / DAY / "collect.json"
-        return json.loads(path.read_text(encoding="utf-8")), requests
-
+class NewRepoChannelTest(CliCase):
     def new_requests(self, requests: list[str]) -> list[str]:
         return [
             path
@@ -94,6 +68,18 @@ class NewRepoChannelTest(unittest.TestCase):
         self.assertEqual(data["stats"]["candidates"], 101)
         self.assertEqual(data["stats"]["channels"], {"star_bands": 0, "new_repos": 101})
 
+    def test_new_channel_stops_after_a_short_first_page(self) -> None:
+        pages = empty_search_pages()
+        pages[(NEW_REPOS_CHANNEL, 1)] = [
+            search_item(f"new/short{index:03d}", 300 - index) for index in range(99)
+        ]
+
+        _, requests = self.collect(pages)
+
+        self.assertEqual(
+            [search_request(path)[1] for path in self.new_requests(requests)], [1]
+        )
+
     def test_merges_channels_case_insensitively_and_counts_each_channel(self) -> None:
         pages = empty_search_pages()
         pages[("100..500", 1)] = [search_item("Shared/Repo", 200)]
@@ -117,8 +103,9 @@ class NewRepoChannelTest(unittest.TestCase):
             any("（区间 1、新仓库 1）" in gap for gap in data["gaps"]),
             data["gaps"],
         )
-        self.assertFalse(
-            any("新仓库通道贡献" in gap for gap in data["gaps"]), data["gaps"]
+        self.assertTrue(
+            any("新仓库通道贡献 1 条候选" in gap for gap in data["gaps"]),
+            data["gaps"],
         )
 
     def test_new_channel_candidates_are_filtered_by_duplicate_window(self) -> None:
@@ -157,87 +144,55 @@ class NewRepoChannelTest(unittest.TestCase):
             any("（区间 1、新仓库 0）" in gap for gap in data["gaps"]),
             data["gaps"],
         )
+        self.assertTrue(
+            any("新仓库通道贡献 0 条候选" in gap for gap in data["gaps"]),
+            data["gaps"],
+        )
 
 
-class ChannelStatsValidationTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp.cleanup)
-        self.work = Path(self._tmp.name) / "work"
-        self.output = Path(self._tmp.name) / "daily-knowledge"
-
-    def write(self, document: dict) -> Path:
-        path = self.work / DAY / "collect.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
-        return path
-
-    def collect_document(self, stats: dict) -> dict:
-        repo = search_item("owner/repo", 120)
-        return {
-            "date": DAY,
-            "collected_at": f"{DAY} 08:00",
-            "github": [
-                {
-                    "full_name": repo["full_name"],
-                    "url": repo["html_url"],
-                    "description": repo["description"],
-                    "language": repo["language"],
-                    "stars_total": repo["stargazers_count"],
-                    "stars_today": 12,
-                    "stars_today_source": "star_history",
-                    "forks": repo["forks_count"],
-                    "created_at": "2020-01-01",
-                    "pushed_at": DAY,
-                }
-            ],
-            "stats": stats,
-            "gaps": [],
-        }
-
-    def validate(self, path: Path) -> object:
-        return run_cli("validate.py", "--file", str(path), work_dir=self.work, output_dir=self.output)
-
+class ChannelStatsValidationTest(CliCase):
     def test_old_collect_without_channels_still_passes(self) -> None:
-        path = self.write(
-            self.collect_document(
-                {"candidates": 1, "eligible": 1, "dropped_recent_duplicates": 0}
+        path = self.write_collect(
+            collect_document(
+                DAY, {"candidates": 1, "eligible": 1, "dropped_recent_duplicates": 0}
             )
         )
 
-        result = self.validate(path)
+        result = self.validate("--file", str(path))
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_collect_with_channel_stats_passes(self) -> None:
-        path = self.write(
-            self.collect_document(
+        path = self.write_collect(
+            collect_document(
+                DAY,
                 {
                     "candidates": 1,
                     "eligible": 1,
                     "dropped_recent_duplicates": 0,
                     "channels": {"star_bands": 1, "new_repos": 0},
-                }
+                },
             )
         )
 
-        result = self.validate(path)
+        result = self.validate("--file", str(path))
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_inconsistent_channel_stats_are_rejected(self) -> None:
-        path = self.write(
-            self.collect_document(
+        path = self.write_collect(
+            collect_document(
+                DAY,
                 {
                     "candidates": 1,
                     "eligible": 1,
                     "dropped_recent_duplicates": 0,
                     "channels": {"star_bands": 2, "new_repos": 0},
-                }
+                },
             )
         )
 
-        result = self.validate(path)
+        result = self.validate("--file", str(path))
 
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn("stats.channels 合计 2 与 stats.candidates=1 不一致", result.stdout)

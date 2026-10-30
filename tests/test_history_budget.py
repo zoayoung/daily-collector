@@ -6,55 +6,18 @@
 from __future__ import annotations
 
 import json
-import tempfile
 import unittest
-from pathlib import Path
 
 from tests.support import (
     NEW_REPOS_CHANNEL,
-    FixtureServer,
+    CliCase,
     empty_search_pages,
-    run_cli,
+    history_names,
     search_item,
 )
 
-DAY = "2026-10-21"
 
-
-def history_names(requests: list[str]) -> list[str]:
-    """按请求顺序返回被查询 star 历史的仓库 full_name。"""
-    names = []
-    for path in requests:
-        if "/stargazers/history" not in path:
-            continue
-        names.append(path.split("/repos/", 1)[1].split("/stargazers", 1)[0])
-    return names
-
-
-class HistoryBudgetRotationTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp.cleanup)
-        self.work = Path(self._tmp.name) / "work"
-        self.output = Path(self._tmp.name) / "daily-knowledge"
-
-    def collect(
-        self, search_pages: dict[tuple[str, int], object], **kwargs: object
-    ) -> tuple[dict, list[str]]:
-        with FixtureServer(search_pages=search_pages, **kwargs) as server:
-            result = run_cli(
-                "collect.py",
-                "--date",
-                DAY,
-                work_dir=self.work,
-                output_dir=self.output,
-                api=server.url,
-            )
-            requests = list(server.requests)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        path = self.work / DAY / "collect.json"
-        return json.loads(path.read_text(encoding="utf-8")), requests
-
+class HistoryBudgetRotationTest(CliCase):
     def test_pending_candidates_rotate_between_channels(self) -> None:
         pages = empty_search_pages()
         pages[("100..500", 1)] = [search_item("Band/High", 5000), search_item("Band/Mid", 4000)]

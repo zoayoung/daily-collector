@@ -154,7 +154,7 @@
 - CI 冒烟（交付门槛）：先在临时分支 `ci-smoke` 推送并 `workflow_dispatch` 真实跑通，覆盖 `force=true` 全流程与 `force=false` 跳过两种情形，再合并 `main`；不以 `act` 或本地 runner 代替真实 Actions。
 - 发布仓库：`https://github.com/zoayoung/daily-collector`（public），默认分支 `main`；本地用 `~/.ssh/git` 推送；仓库包含历史日报与现有测试。
 - 采集脚本：`scripts/collect.py`，由主代理用 `uv run python scripts/collect.py --date <发布日> --gain-date <数据归属日>` 执行；`--gain-date` 默认取 `KNOWLEDGE_GAIN_DATE`，再退回 `--date`；未给 `--date` 时依次取 `KNOWLEDGE_DATE` 与本地今天；`--dry-run` 打印 JSON 不落盘。脚本承担多查询候选池、30 天过滤、数据归属日新增 star、排序选取、`gaps` 与 `stats` 全流程，产物符合 `schemas/collect.schema.json`。
-- 候选池口径：两条通道并列。① star 区间通道：按 4 个 star 区间（`100..500`、`500..2000`、`2000..10000`、`>10000`）分别搜索，保留 `pushed:>=` 约束（取发布日前一天），每个区间 `per_page=100`、最多 2 页（第一页不足 100 条则不再翻页）；老项目只要今日快速上升，同样是有效候选。② 新仓库通道：按 `created:>=` 发布日前 30 天、`stars:>=50` 搜索，`sort=stars`、`order=desc`、`per_page=100`、最多 2 页（第一页不足 100 条则不再翻页）；不加 `pushed` 约束，近 30 天新建但久未推送的项目也能入候选。两路结果合并后按 `full_name` 大小写不敏感去重，保留首次出现的原始大小写（star 区间通道先收集，重叠项目计入该通道）；随后统一经过 30 天重复窗口过滤与增量计算。唯一候选约 1000 个（star 区间约 800，其余来自新仓库通道）。通道标记只存在于采集脚本内部，不写入产物。
+- 候选池口径：两条通道并列。① star 区间通道：按 4 个 star 区间（`100..500`、`500..2000`、`2000..10000`、`>10000`）分别搜索，保留 `pushed:>=` 约束（取发布日前一天），每个区间 `per_page=100`、最多 2 页（第一页不足 100 条则不再翻页）；老项目只要今日快速上升，同样是有效候选。② 新仓库通道：按 `created:>=` 发布日前 30 天、`stars:>=50` 搜索，`sort=stars`、`order=desc`、`per_page=100`、最多 2 页（第一页不足 100 条则不再翻页）；不加 `pushed` 约束，近 30 天新建但久未推送的项目也能入候选。两路结果合并后按 `full_name` 大小写不敏感去重，保留首次出现的原始大小写（star 区间通道先收集，重叠项目计入该通道）；随后统一经过 30 天重复窗口过滤与增量计算。唯一候选约 1000 个（star 区间约 800，其余来自新仓库通道）。通道标记不写入 `github[]` 条目，仅以 `stats.channels` 的按通道汇总计数出现在产物中。
 - 30 天重复窗口：以 `daily-knowledge/*.md` 中已发布的项目为准（读取 `### N. owner/repo` 标题行，大小写不敏感），窗口为 `[发布日-30, 发布日-1]`，**不含发布日**；窗口内出现过的项目零例外剔除。同日重跑不把发布日当天已发布内容当历史。
 - 采集过滤与计数：候选先去重，再按 30 天窗口剔除，剩余为 `eligible`；`dropped_recent_duplicates` 记录被剔除数。`collect.json` 新增可选 `stats: { candidates, eligible, dropped_recent_duplicates, channels }`；`channels` 为可选对象 `{ star_bands, new_repos }`，两个非负整数，按去重后的候选数统计，满足 `star_bands + new_repos = candidates`，与 `candidates` 自洽；旧产物无 `stats` 或 `channels` 仍有效。
 - 采集异常：未配置 `GITHUB_TOKEN`、所有搜索均失败、过滤后候选为空即脚本失败（退出码非 0、不写正式文件）；`star_history` 单次失败记 `gaps` 并把该条记 null。
@@ -242,7 +242,7 @@
 
 - `github` 条数 ≤50（通常 50），按 `stars_today` 降序，不含 null；不足 10 条在 `gaps` 说明。
 - `stats` 可选：`{ "candidates": 993, "eligible": 949, "dropped_recent_duplicates": 44, "channels": { "star_bands": 800, "new_repos": 193 } }`；`channels` 可省略，旧产物无该字段仍有效。
-- `gaps` 如实记录抓取异常、字段缺失、30 天剔除数、未纳入候选数量与 star_history 调用次数。
+- `gaps` 如实记录抓取异常、字段缺失、30 天剔除数、新仓库通道候选数、未纳入候选数量与 star_history 调用次数；新仓库通道候选数单独成行（`新仓库通道贡献 N 条候选`）。
 
 ### analyze.json（分析子代理产物）
 

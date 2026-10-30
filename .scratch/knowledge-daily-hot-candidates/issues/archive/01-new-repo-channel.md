@@ -24,6 +24,8 @@
 - 新通道：`created:>={发布日-30} stars:>=50`、`sort=stars`、`order=desc`、`per_page=100`、最多 2 页，首页不足 100 条不翻页；不加 `pushed` 约束。4 个 star 区间通道保持原样。
 - 两路候选按 `full_name` 小写去重，保留首次出现的原始大小写；合并后统一走 30 天重复窗口与增量计算。
 - `stats.channels: {star_bands, new_repos}` 由去重后的通道归属统计，`star_bands + new_repos = candidates`；`validate.py` 从 schema 派生键并校验求和。
-- 注释：汇总行给出候选总量与两路拆分，新通道搜索失败单独记入 `gaps`。
-- 测试（`tests/test_new_repo_channel.py` + `tests/support.py` 的通道区分）：`test_requests_recent_repos_without_pushed_filter`、`test_new_channel_fetches_second_page_only_when_first_page_is_full`、`test_merges_channels_case_insensitively_and_counts_each_channel`、`test_new_channel_candidates_are_filtered_by_duplicate_window`、`test_inconsistent_channel_stats_are_rejected`、`test_old_collect_without_channels_still_passes`。
+- 注释：汇总行给出候选总量与两路拆分，另起一行给「新仓库通道贡献 N 条候选」，新通道搜索失败单独记入 `gaps`。
+- 测试（`tests/test_new_repo_channel.py` + `tests/support.py` 的通道区分）：`test_requests_recent_repos_without_pushed_filter`、`test_new_channel_fetches_second_page_only_when_first_page_is_full`、`test_new_channel_stops_after_a_short_first_page`、`test_merges_channels_case_insensitively_and_counts_each_channel`、`test_new_channel_candidates_are_filtered_by_duplicate_window`、`test_inconsistent_channel_stats_are_rejected`、`test_old_collect_without_channels_still_passes`。
 - 验收：回放服务器分别给出两路响应后产物同时含两路项目，`stats.channels` 与注释吻合；删除 `stats.channels` 的产物仍通过校验。
+- 口径统一：`created:>=` 的窗口基准按主 spec 与工单要求取 **发布日前 30 天**；hot-candidates spec 初稿写数据归属日，已同步为发布日（两者在 CI 相差 1 天）。
+- 覆盖补齐：新增 `test_new_channel_stops_after_a_short_first_page`，验证首页 99 条时不请求第二页（与区间通道的同名负向用例对齐）。
