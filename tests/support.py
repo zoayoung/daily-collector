@@ -19,12 +19,32 @@ from typing import Self
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
-NEW_REPOS_CHANNEL = "new-repos"
+SEARCH_RANGES = ("100..500", "500..2000", "2000..10000", ">10000")
+NEW_REPOS_CHANNEL = "new_repos"
 
 
 def fixture(name: str) -> object:
     """读取 fixture JSON（真实 GitHub 返回快照）。"""
     return json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
+
+
+def search_item(full_name: str, stars: int, created_at: str = "2020-01-01T00:00:00Z") -> dict:
+    """构造一条搜索接口返回的仓库条目。"""
+    return {
+        "full_name": full_name,
+        "html_url": f"https://github.com/{full_name}",
+        "description": "示例项目",
+        "language": "Go",
+        "stargazers_count": stars,
+        "forks_count": 10,
+        "created_at": created_at,
+        "pushed_at": "2026-10-21T00:00:00Z",
+    }
+
+
+def empty_search_pages() -> dict[tuple[str, int], object]:
+    """让所有 star 区间的第一页回放空列表，只有显式覆盖的通道才有候选。"""
+    return {(star_range, 1): [] for star_range in SEARCH_RANGES}
 
 
 def fixture_bytes(name: str) -> bytes:

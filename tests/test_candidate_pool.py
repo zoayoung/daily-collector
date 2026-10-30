@@ -11,27 +11,17 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 
-from tests.support import NEW_REPOS_CHANNEL, FixtureServer, run_cli, search_request
+from tests.support import (
+    NEW_REPOS_CHANNEL,
+    SEARCH_RANGES,
+    FixtureServer,
+    empty_search_pages,
+    run_cli,
+    search_item,
+    search_request,
+)
 
 DAY = "2026-10-21"
-RANGES = ("100..500", "500..2000", "2000..10000", ">10000")
-
-
-def item(full_name: str, stars: int) -> dict:
-    return {
-        "full_name": full_name,
-        "html_url": f"https://github.com/{full_name}",
-        "description": "示例项目",
-        "language": "Go",
-        "stargazers_count": stars,
-        "forks_count": 10,
-        "created_at": "2020-01-01T00:00:00Z",
-        "pushed_at": "2026-10-21T00:00:00Z",
-    }
-
-
-def empty_pages() -> dict[tuple[str, int], object]:
-    return {(star_range, 1): [] for star_range in RANGES}
 
 
 class CandidatePoolTest(unittest.TestCase):
@@ -59,9 +49,9 @@ class CandidatePoolTest(unittest.TestCase):
         return json.loads(path.read_text(encoding="utf-8")), requests
 
     def test_searches_four_star_ranges_and_dedupes_by_full_name(self) -> None:
-        pages = empty_pages()
-        pages[("100..500", 1)] = [item("Alpha/One", 100), item("Shared/Repo", 200)]
-        pages[("500..2000", 1)] = [item("shared/repo", 600), item("Beta/Two", 800)]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item("Alpha/One", 100), search_item("Shared/Repo", 200)]
+        pages[("500..2000", 1)] = [search_item("shared/repo", 600), search_item("Beta/Two", 800)]
 
         data, requests = self.collect(pages)
 
@@ -74,7 +64,7 @@ class CandidatePoolTest(unittest.TestCase):
             for path in requests
             if path.startswith("/search/repositories")
         }
-        self.assertEqual(searched, set(RANGES) | {NEW_REPOS_CHANNEL})
+        self.assertEqual(searched, set(SEARCH_RANGES) | {NEW_REPOS_CHANNEL})
 
     def searches_in_range(self, requests: list[str], star_range: str) -> list[int]:
         return sorted(
@@ -86,25 +76,25 @@ class CandidatePoolTest(unittest.TestCase):
         )
 
     def test_fetches_second_page_only_when_first_page_is_full(self) -> None:
-        pages = empty_pages()
-        pages[("100..500", 1)] = [item(f"owner/first{i}", 500 - i) for i in range(100)]
-        pages[("100..500", 2)] = [item("owner/second-page", 450)]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item(f"owner/first{i}", 500 - i) for i in range(100)]
+        pages[("100..500", 2)] = [search_item("owner/second-page", 450)]
 
         _, requests = self.collect(pages)
 
         self.assertEqual(self.searches_in_range(requests, "100..500"), [1, 2])
 
     def test_first_page_below_full_does_not_request_second_page(self) -> None:
-        pages = empty_pages()
-        pages[("100..500", 1)] = [item(f"owner/short{i}", 500 - i) for i in range(99)]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item(f"owner/short{i}", 500 - i) for i in range(99)]
 
         _, requests = self.collect(pages)
 
         self.assertEqual(self.searches_in_range(requests, "100..500"), [1])
 
     def test_picks_at_most_fifty_by_daily_gain_without_nulls(self) -> None:
-        pages = empty_pages()
-        pages[("100..500", 1)] = [item(f"owner/repo{i:02d}", 500 - i) for i in range(60)]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item(f"owner/repo{i:02d}", 500 - i) for i in range(60)]
 
         data, _ = self.collect(pages)
 
@@ -121,8 +111,8 @@ class CandidatePoolTest(unittest.TestCase):
     def test_zero_daily_gain_falls_back_to_total_order_and_says_so(self) -> None:
         week = int(datetime(2026, 10, 18, tzinfo=UTC).timestamp())
         history = [{"week": week, "total": 0, "days": [0, 0, 0, 0, 0, 0, 0]}]
-        pages = empty_pages()
-        pages[("100..500", 1)] = [item("owner/small", 300), item("owner/big", 500)]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item("owner/small", 300), search_item("owner/big", 500)]
 
         data, _ = self.collect(pages, star_history_body=history)
 
@@ -150,11 +140,11 @@ class CandidatePoolTest(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        pages = empty_pages()
+        pages = empty_search_pages()
         pages[("100..500", 1)] = [
-            item("owner/alpha", 1000),
-            item("owner/beta", 900),
-            item("owner/gamma", 1100),
+            search_item("owner/alpha", 1000),
+            search_item("owner/beta", 900),
+            search_item("owner/gamma", 1100),
         ]
 
         data, requests = self.collect(pages)
@@ -171,9 +161,9 @@ class CandidatePoolTest(unittest.TestCase):
         self.assertFalse([path for path in requests if "/stargazers/history" in path])
 
     def test_star_history_fallback_is_capped_at_one_hundred_fifty_calls(self) -> None:
-        pages = empty_pages()
-        pages[("100..500", 1)] = [item(f"owner/repo{i:03d}", 900 - i) for i in range(100)]
-        pages[("100..500", 2)] = [item(f"owner/repo{i:03d}", 800 - i) for i in range(100, 160)]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item(f"owner/repo{i:03d}", 900 - i) for i in range(100)]
+        pages[("100..500", 2)] = [search_item(f"owner/repo{i:03d}", 800 - i) for i in range(100, 160)]
 
         data, requests = self.collect(pages)
 
@@ -187,9 +177,9 @@ class CandidatePoolTest(unittest.TestCase):
         (self.output / "2026-09-21.md").write_text(
             "# 知识日报 · 2026-09-21\n\n### 1. Shared/Repo\n", encoding="utf-8"
         )
-        pages = empty_pages()
-        pages[("100..500", 1)] = [item("Alpha/One", 100), item("Shared/Repo", 200)]
-        pages[("500..2000", 1)] = [item("shared/repo", 600), item("Beta/Two", 800)]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item("Alpha/One", 100), search_item("Shared/Repo", 200)]
+        pages[("500..2000", 1)] = [search_item("shared/repo", 600), search_item("Beta/Two", 800)]
 
         data, _ = self.collect(pages)
 
@@ -223,7 +213,7 @@ class CollectStatsValidationTest(unittest.TestCase):
         return path
 
     def collect_document(self, day: str, stats: dict | None) -> dict:
-        repo = item("owner/repo", 120)
+        repo = search_item("owner/repo", 120)
         document = {
             "date": day,
             "collected_at": f"{day} 08:00",

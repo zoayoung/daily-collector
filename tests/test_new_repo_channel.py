@@ -11,28 +11,17 @@ import unittest
 import urllib.parse
 from pathlib import Path
 
-from tests.support import NEW_REPOS_CHANNEL, FixtureServer, run_cli, search_request
+from tests.support import (
+    NEW_REPOS_CHANNEL,
+    FixtureServer,
+    empty_search_pages,
+    run_cli,
+    search_item,
+    search_request,
+)
 
 DAY = "2026-10-21"
 NEW_CUTOFF = "2026-09-21"
-RANGES = ("100..500", "500..2000", "2000..10000", ">10000")
-
-
-def item(full_name: str, stars: int) -> dict:
-    return {
-        "full_name": full_name,
-        "html_url": f"https://github.com/{full_name}",
-        "description": "示例项目",
-        "language": "Go",
-        "stargazers_count": stars,
-        "forks_count": 10,
-        "created_at": "2026-10-01T00:00:00Z",
-        "pushed_at": "2026-10-21T00:00:00Z",
-    }
-
-
-def empty_bands() -> dict[tuple[str, int], object]:
-    return {(star_range, 1): [] for star_range in RANGES}
 
 
 def query_of(path: str) -> dict[str, list[str]]:
@@ -72,8 +61,8 @@ class NewRepoChannelTest(unittest.TestCase):
         ]
 
     def test_requests_recent_repos_without_pushed_filter(self) -> None:
-        pages = empty_bands()
-        pages[(NEW_REPOS_CHANNEL, 1)] = [item("fresh/hot", 80)]
+        pages = empty_search_pages()
+        pages[(NEW_REPOS_CHANNEL, 1)] = [search_item("fresh/hot", 80)]
 
         data, requests = self.collect(pages)
 
@@ -90,11 +79,11 @@ class NewRepoChannelTest(unittest.TestCase):
         self.assertEqual([entry["full_name"] for entry in data["github"]], ["fresh/hot"])
 
     def test_new_channel_fetches_second_page_only_when_first_page_is_full(self) -> None:
-        pages = empty_bands()
+        pages = empty_search_pages()
         pages[(NEW_REPOS_CHANNEL, 1)] = [
-            item(f"new/bulk{index:03d}", 300 - index) for index in range(100)
+            search_item(f"new/bulk{index:03d}", 300 - index) for index in range(100)
         ]
-        pages[(NEW_REPOS_CHANNEL, 2)] = [item("new/second", 50)]
+        pages[(NEW_REPOS_CHANNEL, 2)] = [search_item("new/second", 50)]
 
         data, requests = self.collect(pages)
 
@@ -106,9 +95,9 @@ class NewRepoChannelTest(unittest.TestCase):
         self.assertEqual(data["stats"]["channels"], {"star_bands": 0, "new_repos": 101})
 
     def test_merges_channels_case_insensitively_and_counts_each_channel(self) -> None:
-        pages = empty_bands()
-        pages[("100..500", 1)] = [item("Shared/Repo", 200)]
-        pages[(NEW_REPOS_CHANNEL, 1)] = [item("shared/repo", 600), item("new/only", 70)]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item("Shared/Repo", 200)]
+        pages[(NEW_REPOS_CHANNEL, 1)] = [search_item("shared/repo", 600), search_item("new/only", 70)]
 
         data, _ = self.collect(pages)
 
@@ -125,8 +114,11 @@ class NewRepoChannelTest(unittest.TestCase):
         )
         self.assertTrue(any("候选 2 个" in gap for gap in data["gaps"]), data["gaps"])
         self.assertTrue(
-            any("新仓库通道贡献 1 条候选" in gap for gap in data["gaps"]),
+            any("（区间 1、新仓库 1）" in gap for gap in data["gaps"]),
             data["gaps"],
+        )
+        self.assertFalse(
+            any("新仓库通道贡献" in gap for gap in data["gaps"]), data["gaps"]
         )
 
     def test_new_channel_candidates_are_filtered_by_duplicate_window(self) -> None:
@@ -134,8 +126,8 @@ class NewRepoChannelTest(unittest.TestCase):
         (self.output / "2026-09-21.md").write_text(
             "# 知识日报 · 2026-09-21\n\n### 1. new/old\n", encoding="utf-8"
         )
-        pages = empty_bands()
-        pages[(NEW_REPOS_CHANNEL, 1)] = [item("new/old", 90), item("new/fresh", 80)]
+        pages = empty_search_pages()
+        pages[(NEW_REPOS_CHANNEL, 1)] = [search_item("new/old", 90), search_item("new/fresh", 80)]
 
         data, _ = self.collect(pages)
 
@@ -149,8 +141,8 @@ class NewRepoChannelTest(unittest.TestCase):
         )
 
     def test_new_channel_search_failure_is_recorded(self) -> None:
-        pages = empty_bands()
-        pages[("100..500", 1)] = [item("owner/keep", 300)]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item("owner/keep", 300)]
 
         data, _ = self.collect(
             pages, search_failures={(NEW_REPOS_CHANNEL, 1): 500}
@@ -162,7 +154,7 @@ class NewRepoChannelTest(unittest.TestCase):
         )
         self.assertEqual(data["stats"]["channels"], {"star_bands": 1, "new_repos": 0})
         self.assertTrue(
-            any("新仓库通道贡献 0 条候选" in gap for gap in data["gaps"]),
+            any("（区间 1、新仓库 0）" in gap for gap in data["gaps"]),
             data["gaps"],
         )
 
@@ -181,7 +173,7 @@ class ChannelStatsValidationTest(unittest.TestCase):
         return path
 
     def collect_document(self, stats: dict) -> dict:
-        repo = item("owner/repo", 120)
+        repo = search_item("owner/repo", 120)
         return {
             "date": DAY,
             "collected_at": f"{DAY} 08:00",
@@ -248,7 +240,7 @@ class ChannelStatsValidationTest(unittest.TestCase):
         result = self.validate(path)
 
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertIn("channels", result.stdout)
+        self.assertIn("stats.channels 合计 2 与 stats.candidates=1 不一致", result.stdout)
 
 
 if __name__ == "__main__":

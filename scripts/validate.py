@@ -187,11 +187,13 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
                 )
             channels = stats.get("channels")
             if channels is not None:
-                total = channels.get("star_bands", 0) + channels.get("new_repos", 0)
+                channel_keys = _keys(
+                    schema["properties"]["stats"]["properties"]["channels"], contracts
+                )
+                total = sum(channels[key] for key in channel_keys)
                 if total != candidates:
                     errors.append(
-                        "stats.channels.star_bands + stats.channels.new_repos="
-                        f"{total} 与 stats.candidates={candidates} 不一致"
+                        f"stats.channels 合计 {total} 与 stats.candidates={candidates} 不一致"
                     )
 
     if stage in {"analyze", "organize"}:
