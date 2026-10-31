@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 工作流 spec 的「排序与选取」写明层内同分时按累计 star 降序
-- [ ] 采集产物在层内同分时按累计 star 降序，测试锁定该次序
-- [ ] 校验脚本的分层降序校验接受同分次序，不误报
-- [ ] 全零时层内按累计 star 降序的既有行为保持不变
+- [x] 工作流 spec 的「排序与选取」写明层内同分时按累计 star 降序
+- [x] 采集产物在层内同分时按累计 star 降序，测试锁定该次序
+- [x] 校验脚本的分层降序校验接受同分次序，不误报
+- [x] 全零时层内按累计 star 降序的既有行为保持不变
 
 **Acceptance evidence:** 构造两条同一层、同一 `stars_today`、不同 `stars_total` 的候选，采集产物中累计 star 高者在前；把采集产物交给校验脚本通过。
 

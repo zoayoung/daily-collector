@@ -258,6 +258,24 @@ class LayeredCollectTest(CliCase):
         result = self.validate("--file", str(self.work / DAY / "collect.json"))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_equal_gain_sorts_by_total_within_layer_and_validates(self) -> None:
+        history = [{"week": 1792281600, "total": 14, "days": [0, 0, 0, 7, 0, 0, 0]}]
+        pages = empty_search_pages()
+        pages[("500..2000", 1)] = [
+            search_item("old/small", 900),
+            search_item("old/big", 1200),
+        ]
+
+        data, _ = self.collect(pages, star_history_body=history)
+
+        self.assertEqual(
+            [entry["full_name"] for entry in data["github"]],
+            ["old/big", "old/small"],
+        )
+        self.assertEqual([entry["stars_today"] for entry in data["github"]], [7, 7])
+        result = self.validate("--file", str(self.work / DAY / "collect.json"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_all_zero_gain_keeps_layers_and_sorts_by_total_within_layer(self) -> None:
         week = 1792281600
         history = [{"week": week, "total": 0, "days": [0, 0, 0, 0, 0, 0, 0]}]
@@ -367,6 +385,18 @@ class LayeredValidationTest(CliCase):
             ]
         )
         self.assertEqual(rejected.returncode, 1, rejected.stdout + rejected.stderr)
+
+    def test_equal_gain_order_is_not_reported_as_error(self) -> None:
+        for order in (
+            [("old/high", 1200), ("old/low", 900)],
+            [("old/low", 900), ("old/high", 1200)],
+        ):
+            items = [
+                collect_item(name, "2020-01-01", total, 7) for name, total in order
+            ]
+            with self.subTest(order=[name for name, _ in order]):
+                result = self.validate_items(items)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_publish_minus_eight_days_boundary_accepts_either_layer(self) -> None:
         boundary = collect_item("edge/repo", BOUNDARY, 150, 5)
