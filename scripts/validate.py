@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -30,6 +29,7 @@ from _common import (
     is_date,
     is_new_burst,
     load_validation_rules,
+    new_burst_validation_boundary,
     published_history,
     read_json,
     today,
@@ -127,10 +127,16 @@ def _check_duplicate_window(
         errors.append(f"{where} repeat.last_seen={last_seen} 应等于最近发布日期 {latest}")
 
 
-def _check_order(items: list[dict], day: str | None, errors: list[str], where: str) -> None:
+def _check_order(
+    items: list[dict],
+    day: str | None,
+    window_days: int,
+    errors: list[str],
+    where: str,
+) -> None:
     """分层硬校验：新爆款恒在老项目之前，层内按 stars_today（全零时 stars_total）降序。
 
-    产物只携带发布日，分层基准是数据归属日；对 created_at 恰为「发布日 - 8 天」的条目
+    产物只携带发布日，分层基准是数据归属日；对 created_at 恰为「发布日 - 窗口 - 1 天」的条目
     接受任一分层，避免本地（基准=发布日）与 CI（基准=发布日前一天）互相误杀。
     """
     values = [item.get("stars_today") for item in items]
@@ -139,12 +145,12 @@ def _check_order(items: list[dict], day: str | None, errors: list[str], where: s
     all_zero = all(value == 0 for value in values)
     boundary = None
     if day and is_date(day):
-        boundary = (date.fromisoformat(day) - timedelta(days=8)).isoformat()
+        boundary = new_burst_validation_boundary(day, window_days)
 
     def layer(item: dict) -> int:
         if day is None or not is_date(day):
             return 1
-        if is_new_burst(item.get("created_at"), item.get("stars_total"), day):
+        if is_new_burst(item.get("created_at"), item.get("stars_total"), day, window_days):
             return 0
         return 1
 
@@ -214,7 +220,7 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
             warnings.append(
                 f"入榜不足 {rules['collect_min_items']} 条（实际 {len(items)} 条），gaps 中应说明原因"
             )
-        _check_order(items, day, errors, "github")
+        _check_order(items, day, rules["new_burst_window_days"], errors, "github")
         stats = data.get("stats")
         if stats is not None:
             _unknown(stats, stats_keys, "stats", errors)
@@ -256,7 +262,7 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
                 f"stats.{STATS_GITHUB_COUNT}={stats.get(STATS_GITHUB_COUNT)} "
                 f"与条目数 {len(items)} 不一致"
             )
-        _check_order(items, day, errors, "github")
+        _check_order(items, day, rules["new_burst_window_days"], errors, "github")
 
     if stage == "analyze":
         stats = data.get("stats") or {}

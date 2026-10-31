@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 分层边界偏移来自校验语义配置，或由其中的新爆款窗口推导，代码中无字面 8
 - [ ] 数据归属日减 7 天的截止日只在一处计算，采集与校验复用同一函数

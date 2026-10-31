@@ -165,7 +165,7 @@
 - 分析阶段：为 `collect.json` 的全部条目（通常 50 条）做自由标签与 `core`/`why` 分析要点；只给 30 天外再次出现的项目写 `repeat.last_seen`，**不再剔除 30 天内项目**。**不决定入选条数、不写 `rank`/`overview`**。`core`/`why` 为分析要点，不设 100 汉字硬限。
 - 整理阶段：从 analyze 候选中**定稿 10–15 条**（不足 10 按实际并在 `gaps` 说明），有权剔除但必须计入 `stats.dropped_by_organize`，`gaps` 按批次说明理由；负责 `rank`（按分层排序连续编号：新爆款在前、层内按 `stars_today` 降序，全零时层内按 `stars_total` 降序）、`overview`（自由标签合并 ≤6 组）、`core` ≤100 汉字（不计英文单词与数字）、`why` 一句评价与建议。
 - 渲染：主代理按固定模板机械填充 `organize.json`，文字与数字照抄、不改写；模板见「编排协议 · 渲染模板」。标题下放质量评分摘要，每条放 star 与评分；新爆款标题为 `### {rank}. 🆕 {full_name}`，非新爆款标题不变；概览不新增“新爆款”分组；30 天外重复只输出「🔁 重复：上次 YYYY-MM-DD」，不再输出「新进展」。
-- 校验：`schemas/*.schema.json` 是字段唯一来源（spec 只解释语义），`scripts/validate.py` 用 jsonschema + 跨文件语义检查；语义阈值见 `config/validation-rules.json`（`dedupe_window_days`、`collect_min_items`、`report_min_items`、`report_max_items`、`core_max_cjk`）。默认校验当日 `work/` 产物，`--all` 校验最近一个含阶段产物的 work 日期目录（跳过只有 tokens.json 的目录），`--file` 可单独校验。
+- 校验：`schemas/*.schema.json` 是字段唯一来源（spec 只解释语义），`scripts/validate.py` 用 jsonschema + 跨文件语义检查；语义阈值见 `config/validation-rules.json`（`dedupe_window_days`、`collect_min_items`、`report_min_items`、`report_max_items`、`core_max_cjk`、`new_burst_window_days`）。默认校验当日 `work/` 产物，`--all` 校验最近一个含阶段产物的 work 日期目录（跳过只有 tokens.json 的目录），`--file` 可单独校验。
 - 30 天硬校验：`validate.py` 对 analyze/organize 中的每条按 `full_name` 查窗口内历史；命中即报错，不论 `repeat` 或新进展。30 天外出现的项目必须带 `repeat.last_seen`，且 `last_seen` 等于最近一次发布日期。
 - 统计透传：`collect.stats.dropped_recent_duplicates` 存在时，analyze 与 organize 的同名字段必须与上游一致；旧 collect 无 `stats` 时按 0 处理。
 - 术语口径：**候选集**是搜索去重后的全部项目，**入榜集**是 `collect.json` 的 50 条，**定稿集**是 `organize.json` 的 10–15 条；三者不再混用「采集」一词。重复窗口指上述滚动 30 天。

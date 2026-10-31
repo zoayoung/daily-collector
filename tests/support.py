@@ -341,6 +341,27 @@ class CliCase(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.work = Path(self._tmp.name) / "work"
         self.output = Path(self._tmp.name) / "daily-knowledge"
+        self.config = Path(self._tmp.name) / "config"
+
+    def use_config(self, **overrides: object) -> Path:
+        """把仓库配置复制到临时目录并覆盖指定键，供 CLI 用 KNOWLEDGE_CONFIG_DIR 隔离读取。"""
+        self.config.mkdir(parents=True, exist_ok=True)
+        for path in (ROOT / "config").glob("*.json"):
+            (self.config / path.name).write_text(
+                path.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+        target = self.config / "validation-rules.json"
+        rules = json.loads(target.read_text(encoding="utf-8"))
+        rules.update(overrides)
+        target.write_text(
+            json.dumps(rules, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        return self.config
+
+    def _config_env(self) -> dict[str, str] | None:
+        if not self.config.exists():
+            return None
+        return {"KNOWLEDGE_CONFIG_DIR": str(self.config)}
 
     def collect(
         self,
@@ -358,6 +379,7 @@ class CliCase(unittest.TestCase):
                 work_dir=self.work,
                 output_dir=self.output,
                 api=server.url,
+                extra_env=self._config_env(),
             )
             requests = list(server.requests)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -376,6 +398,7 @@ class CliCase(unittest.TestCase):
             *args,
             work_dir=self.work,
             output_dir=self.output,
+            extra_env=self._config_env(),
         )
 
 
@@ -395,6 +418,7 @@ def run_cli(
         "GH_TOKEN",
         "KNOWLEDGE_WORK_DIR",
         "KNOWLEDGE_OUTPUT_DIR",
+        "KNOWLEDGE_CONFIG_DIR",
         "KNOWLEDGE_GITHUB_API",
         "KNOWLEDGE_DATE",
         "KNOWLEDGE_GAIN_DATE",
