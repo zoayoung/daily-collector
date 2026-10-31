@@ -125,7 +125,7 @@
 100. 作为维护者，我希望候选池按多个 star 区间分别搜索并按 `full_name` 去重，以便每月 300–450 个不重复项目有稳定来源。
 101. 作为维护者，我希望每个 star 区间最多翻 2 页，以便控制搜索调用与耗时。
 102. 作为维护者，我希望 star 历史兜底上限提高到 150 次/轮，以便扩大候选的增量覆盖率。
-103. 作为维护者，我希望 `collect.json` 写入 50 条并按分层排序（新爆款在前、层内按 `stars_today` 降序，全零时层内按 `stars_total` 降序），以便次日本地差分覆盖更多项目。
+103. 作为维护者，我希望 `collect.json` 写入 50 条并按分层排序（新爆款在前、层内按 `stars_today` 降序，同分时按 `stars_total` 降序；全零时层内按 `stars_total` 降序），以便次日本地差分覆盖更多项目。
 104. 作为维护者，我希望 `collect.json` 新增可选的 `candidates`、`excluded`、`eligible`、`dropped_recent_duplicates`、`readme_dropped` 统计，以便去重数量可核查，同时旧产物仍能通过校验。
 105. 作为维护者，我希望 30 天窗口的判定同时由采集脚本与 `validate.py` 执行，以便规则不依赖子代理自觉。
 106. 作为维护者，我希望 `validate.py` 对窗口内条目直接报错，不论是否有新进展，以便规则零例外。
@@ -160,7 +160,7 @@
 - 采集过滤与计数：候选先去重、统计通道，再应用候选排除、按 30 天窗口剔除，剩余为 `eligible`；`excluded` 记录被排除数，`dropped_recent_duplicates` 记录窗口剔除数，恒等式为 `candidates - excluded - dropped_recent_duplicates = eligible`。`collect.json` 可选 `stats: { candidates, excluded, eligible, dropped_recent_duplicates, readme_dropped, channels }`；`excluded` 与 `readme_dropped` 均为可选非负整数，旧产物缺失按 0 处理；`channels` 为可选对象 `{ star_bands, new_repos, new_7d }`，三个非负整数，按去重后（排除前）的候选数统计。新产物写全三键且存在键之和等于 `candidates`；schema 不强制三键，校验只要求“存在的键之和 = candidates”，旧的两键产物仍有效；旧产物无 `stats` 或 `channels` 也仍有效。
 - 采集异常：未配置 `GITHUB_TOKEN`、所有搜索均失败、过滤后候选为空即脚本失败（退出码非 0、不写正式文件）；`star_history` 单次失败记 `gaps` 并把该条记 null。
 - 新增 star 口径：基线取 `work/**/collect.json` 中**日期早于发布日的最近一次**该 repo 的 `stars_total`；仅当基线恰为**发布日的上一自然日**时才用于差分（同日重跑不会读到自身产物）。优先级：① 本地差分 `stars_today_source=local_diff`，命中者不消耗预算；② 官方兜底 `GET /repos/{owner}/{repo}/stargazers/history`，按**数据归属日**查、按三个通道轮转取号（star 区间、新仓库、近 7 天新建交替各取一条，通道内仍按 `stars_total` 降序），总量 ≤150 次/轮，`stars_today_source=star_history`；③ 都不可得记 null，单次失败仍记 `gaps`。定时任务在清晨 06:00（UTC+8）窗口取数，数据归属日为发布日前一天：`stargazers/history` 按该日历日查；本地差分以上一发布日的 `collect.json` 为基线，窗口是上次采集到本次采集（约 24 小时，起点落在清晨），与日历日归属窗口错开约 6 小时，仅在拿不到 star 历史时作近似。
-- 排序与选取：在 `eligible` 中丢弃 `stars_today=null` 的候选，其余按分层排序：新爆款（`created_at >= 数据归属日 - 7 天` 且 `stars_total >= 100`，由现有字段推导、不写布尔字段）恒在老项目之前，层内按 `stars_today` 降序；所有 `stars_today` 为 0 时层内改按 `stars_total` 降序，分层不变；不设通道保底名额。分层排序之后、取前 50 之前逐条检查 README：按排序顺序请求 `GET /repos/{owner}/{repo}/readme`，404 视为无 README 并剔除、计入 `stats.readme_dropped`；其他 HTTP/网络错误保留该条并记入 `gaps`。每轮最多 100 次 README 请求，凑满 50 条或预算耗尽即停；预算耗尽时在 `gaps` 说明另有 N 条未做 README 检查。`eligible` 在 README 检查前计算、不重算。不足 50 按实际数量输出，不足 10 在 `gaps` 说明。采集入榜、分析顺序、整理 `rank`、渲染顺序使用同一分层规则。
+- 排序与选取：在 `eligible` 中丢弃 `stars_today=null` 的候选，其余按分层排序：新爆款（`created_at >= 数据归属日 - 7 天` 且 `stars_total >= 100`，由现有字段推导、不写布尔字段）恒在老项目之前，层内按 `stars_today` 降序，同分时再按 `stars_total` 降序；所有 `stars_today` 为 0 时层内改按 `stars_total` 降序，分层不变；不设通道保底名额。分层排序之后、取前 50 之前逐条检查 README：按排序顺序请求 `GET /repos/{owner}/{repo}/readme`，404 视为无 README 并剔除、计入 `stats.readme_dropped`；其他 HTTP/网络错误保留该条并记入 `gaps`。每轮最多 100 次 README 请求，凑满 50 条或预算耗尽即停；预算耗尽时在 `gaps` 说明另有 N 条未做 README 检查。`eligible` 在 README 检查前计算、不重算。不足 50 按实际数量输出，不足 10 在 `gaps` 说明。采集入榜、分析顺序、整理 `rank`、渲染顺序使用同一分层规则。
 - 认证（必填）：脚本从进程环境或项目根 `.env` 读取 `GITHUB_TOKEN`（兼容 `GH_TOKEN`），进程环境优先；缺失即失败，不退回未认证。`.env` 由脚本自行加载（opencode 不自动注入），`.env` 已被 git 忽略，模板见 `.env.example`。认证后配额：搜索 30 次/分、核心 5000 次/时。
 - 分析阶段：为 `collect.json` 的全部条目（通常 50 条）做自由标签与 `core`/`why` 分析要点；只给 30 天外再次出现的项目写 `repeat.last_seen`，**不再剔除 30 天内项目**。**不决定入选条数、不写 `rank`/`overview`**。`core`/`why` 为分析要点，不设 100 汉字硬限。
 - 整理阶段：从 analyze 候选中**定稿 10–15 条**（不足 10 按实际并在 `gaps` 说明），有权剔除但必须计入 `stats.dropped_by_organize`，`gaps` 按批次说明理由；负责 `rank`（按分层排序连续编号：新爆款在前、层内按 `stars_today` 降序，全零时层内按 `stars_total` 降序）、`overview`（自由标签合并 ≤6 组）、`core` ≤100 汉字（不计英文单词与数字）、`why` 一句评价与建议。
