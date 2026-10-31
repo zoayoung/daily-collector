@@ -126,7 +126,7 @@
 101. 作为维护者，我希望每个 star 区间最多翻 2 页，以便控制搜索调用与耗时。
 102. 作为维护者，我希望 star 历史兜底上限提高到 150 次/轮，以便扩大候选的增量覆盖率。
 103. 作为维护者，我希望 `collect.json` 写入 50 条并按分层排序（新爆款在前、层内按 `stars_today` 降序，全零时层内按 `stars_total` 降序），以便次日本地差分覆盖更多项目。
-104. 作为维护者，我希望 `collect.json` 新增可选的 `candidates`、`eligible`、`dropped_recent_duplicates` 统计，以便去重数量可核查，同时旧产物仍能通过校验。
+104. 作为维护者，我希望 `collect.json` 新增可选的 `candidates`、`excluded`、`eligible`、`dropped_recent_duplicates`、`readme_dropped` 统计，以便去重数量可核查，同时旧产物仍能通过校验。
 105. 作为维护者，我希望 30 天窗口的判定同时由采集脚本与 `validate.py` 执行，以便规则不依赖子代理自觉。
 106. 作为维护者，我希望 `validate.py` 对窗口内条目直接报错，不论是否有新进展，以便规则零例外。
 107. 作为维护者，我希望 `repeat` 只保留 `last_seen`，以便契约与渲染模板简化。
@@ -546,7 +546,7 @@
 - 每次产出后可抽查的验收点：
   - 结构完整：日期标题、质量评分摘要、今日概览（一句总述 + 分组要点）、GitHub 趋势齐全；条目格式符合模板。
   - 数量与排序：GitHub 趋势 10–15 条（或 gaps 说明不足）、按分层排序（新爆款在前、层内按 `stars_today` 降序，全零时层内按 `stars_total` 降序）、`rank` 连续；新爆款标题带 `🆕` 且非新爆款无标记。
-  - 候选与入榜：`collect.json` 50 条（或 gaps 说明不足）、`stats.candidates - stats.dropped_recent_duplicates = stats.eligible`、`eligible >= github 条数`。
+  - 候选与入榜：`collect.json` 50 条（或 gaps 说明不足）、`stats.candidates - stats.excluded - stats.dropped_recent_duplicates = stats.eligible`、`eligible >= github 条数`。
   - 标签自由：条目标签不再限定固定主题；每条建议 2–4 个；未打标签的渲染为 `[其他]`；概览分组不超过 6 组。
   - 展示齐全：每条含总 star（千分位）、数据归属日新增 star 与评分/等级；标题下含均分与 A/B/C 分布；逐条评分按 `rank` 与 `full_name` 同时匹配，单条缺失只省略该条评分，整份评分不可用才连标题行一起省略。
   - 数字可核对：条目 star 总数/数据归属日增量与 collect/organize 一致，逐条评分与 `score.json` 的 `total`/`grade` 一致，标题均分与分布与 `summary` 一致。

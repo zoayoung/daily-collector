@@ -26,6 +26,18 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 HEADING_RE = re.compile(r"^###\s+\d+\.\s+(?:🆕\s+)?(\S+/\S+)\s*$")
 
+NEW_BURST_WINDOW_DAYS = 7
+NEW_BURST_MIN_STARS = 100
+
+STATS_CANDIDATES = "candidates"
+STATS_EXCLUDED = "excluded"
+STATS_ELIGIBLE = "eligible"
+STATS_DROPPED_RECENT_DUPLICATES = "dropped_recent_duplicates"
+STATS_README_DROPPED = "readme_dropped"
+STATS_CHANNELS = "channels"
+STATS_GITHUB_COUNT = "github_count"
+STATS_DROPPED_BY_ORGANIZE = "dropped_by_organize"
+
 
 def _load_env_file(path: Path) -> None:
     """读取项目根 .env；已存在的进程环境变量优先，不被覆盖。"""
@@ -133,6 +145,17 @@ def load_validation_rules() -> dict:
 def window_start(day: str, window_days: int) -> str:
     """重复窗口的起始日：day 之前第 window_days 天（含当天）。"""
     return (date.fromisoformat(day) - timedelta(days=window_days)).isoformat()
+
+
+def is_new_burst(created_at: object, stars_total: object, gain_day: str) -> bool:
+    """新爆款：创建日期不早于数据归属日前 7 天，且累计 star ≥100。"""
+    created = created_at if isinstance(created_at, str) else ""
+    cutoff = (date.fromisoformat(gain_day) - timedelta(days=NEW_BURST_WINDOW_DAYS)).isoformat()
+    return (
+        created[:10] >= cutoff
+        and isinstance(stars_total, int)
+        and stars_total >= NEW_BURST_MIN_STARS
+    )
 
 
 def published_history(day: str) -> dict[str, list[str]]:

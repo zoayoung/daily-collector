@@ -24,8 +24,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _common import (
+    NEW_BURST_MIN_STARS,
+    NEW_BURST_WINDOW_DAYS,
+    STATS_CANDIDATES,
+    STATS_CHANNELS,
+    STATS_DROPPED_RECENT_DUPLICATES,
+    STATS_ELIGIBLE,
+    STATS_EXCLUDED,
+    STATS_README_DROPPED,
     WORK_DIR,
     is_date,
+    is_new_burst,
     load_validation_rules,
     read_json,
     recent_duplicates,
@@ -41,8 +50,6 @@ CHANNELS = tuple(CHANNEL_LABELS)
 STAR_BANDS_CHANNEL, NEW_REPOS_CHANNEL, NEW_7D_CHANNEL = CHANNELS
 NEW_REPOS_MIN_STARS = 50
 NEW_REPOS_WINDOW_DAYS = 30
-NEW_BURST_MIN_STARS = 100
-NEW_BURST_WINDOW_DAYS = 7
 MAX_PAGES = 2
 PER_PAGE = 100
 MAX_HISTORY_CALLS = 150
@@ -143,14 +150,6 @@ def candidate(item: dict) -> dict:
         "pushed_at": (item.get("pushed_at") or "")[:10],
         "topics": topics_of(item),
     }
-
-
-def is_new_burst(repo: dict, gain_day: str) -> bool:
-    """新爆款：数据归属日前 7 天创建且累计 star ≥100，由现有字段推导。"""
-    created = repo.get("created_at") or ""
-    total = repo.get("stars_total")
-    cutoff = (date.fromisoformat(gain_day) - timedelta(days=NEW_BURST_WINDOW_DAYS)).isoformat()
-    return created >= cutoff and isinstance(total, int) and total >= NEW_BURST_MIN_STARS
 
 
 def is_excluded(repo: dict) -> bool:
@@ -292,11 +291,11 @@ def build(day: str, gain_day: str) -> dict:
     for channel, _ in candidates:
         channels[channel] += 1
     stats = {
-        "candidates": len(candidates),
-        "excluded": excluded,
-        "eligible": len(eligible),
-        "dropped_recent_duplicates": dropped_recent_duplicates,
-        "channels": channels,
+        STATS_CANDIDATES: len(candidates),
+        STATS_EXCLUDED: excluded,
+        STATS_ELIGIBLE: len(eligible),
+        STATS_DROPPED_RECENT_DUPLICATES: dropped_recent_duplicates,
+        STATS_CHANNELS: channels,
     }
 
     local_diff = 0
@@ -347,10 +346,10 @@ def build(day: str, gain_day: str) -> dict:
     with_gain = [repo for _, repo in eligible if repo["stars_today"] is not None]
     all_zero_gain = not any(repo["stars_today"] for repo in with_gain)
 
-    def rank_key(repo: dict) -> tuple[int, int]:
-        layer = 0 if is_new_burst(repo, gain_day) else 1
-        within = (repo["stars_total"] or 0) if all_zero_gain else repo["stars_today"]
-        return layer, -within
+    def rank_key(repo: dict) -> tuple[int, int, int]:
+        layer = 0 if is_new_burst(repo.get("created_at"), repo.get("stars_total"), gain_day) else 1
+        within = 0 if all_zero_gain else repo["stars_today"]
+        return layer, -within, -(repo["stars_total"] or 0)
 
     ranked = sorted(with_gain, key=rank_key)
     if not ranked:
@@ -378,7 +377,7 @@ def build(day: str, gain_day: str) -> dict:
         picked.append(repo)
     if not picked:
         raise RuntimeError("没有任何候选通过 README 检查")
-    stats["readme_dropped"] = readme_dropped
+    stats[STATS_README_DROPPED] = readme_dropped
     missing = [repo["full_name"] for repo in picked if not repo["url"] or not repo["full_name"]]
 
     channel_summary = "、".join(
@@ -414,9 +413,12 @@ def build(day: str, gain_day: str) -> dict:
             f"README 检查预算耗尽（上限 {MAX_README_CHECKS} 次），"
             f"另有 {readme_unchecked} 条未做 README 检查"
         )
-    if len(picked) >= PICK_LIMIT and len(ranked) > len(picked):
-        gaps.append(f"未纳入 {len(ranked) - len(picked)} 个候选（排名在 {PICK_LIMIT} 之后）")
-    if picked and not any(repo["stars_today"] for repo in picked):
+    if len(ranked) > len(picked):
+        gaps.append(
+            f"未纳入 {len(ranked) - len(picked)} 个候选"
+            f"（排名在 {PICK_LIMIT} 之后或 README 检查未通过）"
+        )
+    if all_zero_gain:
         gaps.append(
             "数据归属日增量全为 0（数据可能尚未产生），本次按分层内 stars_total 降序排列"
         )

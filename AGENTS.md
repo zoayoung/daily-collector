@@ -25,7 +25,7 @@ GitHub Actions 每个自然日清晨 06:00（UTC+8）起无头运行同一套流
 
 - 默认只读：未经用户明确要求，不修改项目中的任何文件、不开始实施、不提交或推送。用户只要求改文档时，只改指定文档。
 - 采集由 Python 脚本（`scripts/collect.py`）完成；契约校验与质量评分为 Python（`scripts/validate.py`、`scripts/score.py`）；其余阶段零脚本。
-- 采集口径（三通道、新爆款分层排序与 `🆕` 标记）见 `.scratch/knowledge-daily/spec.md` 的「候选池口径」「排序与选取」「渲染模板」节。
+- 采集口径（三通道、新爆款分层排序与 `🆕` 标记）见 `.scratch/knowledge-daily/spec.md` 的「实现决策」中「候选池口径」「排序与选取」与「编排协议 · 渲染模板」节。
 - 字段与形状以 `schemas/` 为唯一来源；评分词表在 `config/score-rules.json`，校验语义阈值在 `config/validation-rules.json`；三者都不在技能里复述。
 - 子代理只有两个：`knowledge-analyze`（分析）与 `knowledge-organize`（整理）；采集不再是子代理。
 - 技能/agent/文档的写法规范（供 `/code-review` 标准轴）见 `docs/agents/CODING_STANDARDS.md`。

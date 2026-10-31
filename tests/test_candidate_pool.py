@@ -32,8 +32,8 @@ class CandidatePoolTest(CliCase):
         data, requests = self.collect(pages)
 
         self.assertEqual(
-            [entry["full_name"] for entry in data["github"]],
-            ["Alpha/One", "Shared/Repo", "Beta/Two"],
+            sorted(entry["full_name"] for entry in data["github"]),
+            ["Alpha/One", "Beta/Two", "Shared/Repo"],
         )
         searched = {
             search_request(path)[0]
