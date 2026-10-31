@@ -25,6 +25,7 @@
         "excluded": { "type": "integer", "minimum": 0 },
         "eligible": { "type": "integer", "minimum": 0 },
         "dropped_recent_duplicates": { "type": "integer", "minimum": 0 },
+        "readme_dropped": { "type": "integer", "minimum": 0 },
         "channels": {
           "type": "object",
           "additionalProperties": false,
