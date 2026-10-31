@@ -36,9 +36,14 @@ def fixture(name: str) -> object:
     return json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
 
 
-def search_item(full_name: str, stars: int, created_at: str = "2020-01-01T00:00:00Z") -> dict:
-    """构造一条搜索接口返回的仓库条目。"""
-    return {
+def search_item(
+    full_name: str,
+    stars: int,
+    created_at: str = "2020-01-01T00:00:00Z",
+    topics: object = None,
+) -> dict:
+    """构造一条搜索接口返回的仓库条目；topics 非 None 时才写入响应字段。"""
+    item = {
         "full_name": full_name,
         "html_url": f"https://github.com/{full_name}",
         "description": "示例项目",
@@ -48,6 +53,9 @@ def search_item(full_name: str, stars: int, created_at: str = "2020-01-01T00:00:
         "created_at": created_at,
         "pushed_at": "2026-10-21T00:00:00Z",
     }
+    if topics is not None:
+        item["topics"] = topics
+    return item
 
 
 def empty_search_pages() -> dict[tuple[str, int], object]:

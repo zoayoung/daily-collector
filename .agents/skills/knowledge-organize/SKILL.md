@@ -34,7 +34,7 @@ allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/spec.md), Read(wor
 产物 `work/YYYY-MM-DD/organize.json`（UTF-8），字段以 spec「organize.json」节与 `schemas/organize.schema.json` 为准，其中：
 
 - `date` 为委派日期。
-- `github`：analyze 全部字段 + `rank`；`rank` 连续，顺序为「新爆款在前、层内按 `stars_today` 降序」，全零时层内按 `stars_total` 降序；定稿条数见 spec「organize.json（整理子代理产出）」节。
+- `github`：analyze 全部字段（含 `topics`，原样保留）+ `rank`；`rank` 连续，顺序为「新爆款在前、层内按 `stars_today` 降序」，全零时层内按 `stars_total` 降序；定稿条数见 spec「organize.json（整理子代理产出）」节。
 - `core` 遵守 spec 的字数上限；`why` 为一句话评价与建议。
 - `overview`：`lead` 一句 + `themes[]`（`{name, note}`，只含当日命中的分组，口径见 spec『实现决策 · 概览口径』；`name` 可为标签或合并后的组名）。
 - `stats`：`{ github_count, dropped_recent_duplicates, dropped_by_organize }`；`github_count` 等于条数，`dropped_recent_duplicates` 沿用 analyze.json。

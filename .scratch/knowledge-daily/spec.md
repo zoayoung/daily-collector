@@ -238,9 +238,10 @@
 
 ### collect.json（采集脚本产物）
 
-`schemas/collect.schema.json`：`date`、`collected_at`、`github[]`（collect 字段：full_name/url/description/language/stars_total/stars_today/stars_today_source/forks/created_at/pushed_at）、可选的 `stats`、`gaps[]`。
+`schemas/collect.schema.json`：`date`、`collected_at`、`github[]`（collect 字段：full_name/url/description/language/stars_total/stars_today/stars_today_source/forks/created_at/pushed_at/topics）、可选的 `stats`、`gaps[]`。
 
 - `github` 条数 ≤50（通常 50），按分层排序（新爆款在前、层内按 `stars_today` 降序，全零时层内按 `stars_total` 降序），不含 null；不足 10 条在 `gaps` 说明。
+- `topics` 可选：GitHub 仓库主题字符串数组，元素非空且不重复；采集缺失或非法时写空数组，旧产物可省略该字段；不影响候选、统计与排序。
 - `stats` 可选：`{ "candidates": 993, "eligible": 949, "dropped_recent_duplicates": 44, "channels": { "star_bands": 800, "new_repos": 193, "new_7d": 60 } }`；`channels` 可省略，旧的两键产物仍有效；新产物写全三键。
 - `gaps` 如实记录抓取异常、字段缺失、30 天剔除数、新仓库与近 7 天新建通道候选数、未纳入候选数量与 star_history 调用次数；两条时间通道的候选数各自成行（`新仓库通道贡献 N 条候选`、`近 7 天新建通道贡献 N 条候选`），并说明刷星未做自动判定。
 
@@ -270,6 +271,7 @@
 - `repeat`：仅 30 天外历史出现过才有，形如 `{ "last_seen": "YYYY-MM-DD" }`；`last_seen` 必须真实存在于 `daily-knowledge/` 历史，且等于最近一次发布日期。
 - 30 天窗口内项目已在采集阶段剔除，分析阶段不再剔除；`dropped_recent_duplicates` 沿用 `collect.stats` 的计数（旧 collect 无 stats 时为 0）。
 - 30 天外再次出现的项目照常分析并标 `repeat`，不再要求写「新进展」。
+- `topics` 可选：collect 条目携带时原样保留，整理阶段同样透传；是否用于打标签由分析阶段自行决定，不改变契约。
 
 ### organize.json（整理子代理产物）
 
