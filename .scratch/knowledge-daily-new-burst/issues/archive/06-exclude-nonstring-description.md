@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 工作流 spec 的候选排除段把「非字符串 description」纳入无描述的定义
-- [ ] 采集对数字、对象、`null`、缺失的 description 均剔除
-- [ ] 采集 CLI 测试覆盖非字符串 description
-- [ ] Awesome 名称与「a curated list」开头的既有排除行为不变
+- [x] 工作流 spec 的候选排除段把「非字符串 description」纳入无描述的定义
+- [x] 采集对数字、对象、`null`、缺失的 description 均剔除
+- [x] 采集 CLI 测试覆盖非字符串 description
+- [x] Awesome 名称与「a curated list」开头的既有排除行为不变
 
 **Acceptance evidence:** 回放服务器返回一条 `description` 为数字的仓库，采集产物中不含该条，`stats.excluded` 计入。
 
