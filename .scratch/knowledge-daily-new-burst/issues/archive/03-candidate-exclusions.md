@@ -4,7 +4,7 @@
 
 **Blocked by:** 01（同一份采集统计契约与候选管线）
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] 候选集阶段硬剔除 Awesome 列表：仓库名含 `awesome`，或描述以 curated list 开头（均不区分大小写）
 - [x] 候选集阶段硬剔除无描述仓库：缺失、`null` 或去空白后为空

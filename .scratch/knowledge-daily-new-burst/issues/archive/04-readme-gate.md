@@ -4,7 +4,7 @@
 
 **Blocked by:** 03（共享采集统计契约与 eligible 口径）
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] README 检查发生在增量计算与分层排序之后、取前 50 条之前，按排序顺序进行
 - [x] 每轮 README 请求不超过 100 次；凑满 50 条或预算耗尽即停

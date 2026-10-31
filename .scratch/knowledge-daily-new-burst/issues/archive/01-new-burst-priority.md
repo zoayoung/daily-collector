@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] 「近 7 天新建」通道按「数据归属日前 7 天创建 + 累计 star ≥100」发起搜索，`per_page=100`、最多 2 页，首页不足 100 条不再翻页
 - [x] 三路候选按 `full_name` 大小写不敏感去重，保留首次出现的原始大小写；通道归属只用于统计，不决定分层
