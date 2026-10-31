@@ -375,8 +375,6 @@ def build(day: str, gain_day: str) -> dict:
         if error:
             gaps.append(f"{repo['full_name']} README 检查失败：{error}")
         picked.append(repo)
-    if not picked:
-        raise RuntimeError("没有任何候选通过 README 检查")
     stats[STATS_README_DROPPED] = readme_dropped
     missing = [repo["full_name"] for repo in picked if not repo["url"] or not repo["full_name"]]
 
@@ -399,6 +397,11 @@ def build(day: str, gain_day: str) -> dict:
         f"{CHANNEL_LABELS[NEW_7D_CHANNEL]}通道贡献 "
         f"{channels[NEW_7D_CHANNEL]} 条候选",
     )
+    if not picked and readme_dropped:
+        gaps.insert(
+            3,
+            f"已检查候选的 README 均缺失（剔除 {readme_dropped} 个），本次入榜 0 条",
+        )
     gaps.append("刷星未做自动判定（不引入 star 异常增长过滤）")
     gaps.append(
         f"star_history 调用 {history_calls} 次（上限 {MAX_HISTORY_CALLS}），失败 {history_failed} 次"
