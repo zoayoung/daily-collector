@@ -22,6 +22,7 @@
       "required": ["candidates", "eligible", "dropped_recent_duplicates"],
       "properties": {
         "candidates": { "type": "integer", "minimum": 0 },
+        "excluded": { "type": "integer", "minimum": 0 },
         "eligible": { "type": "integer", "minimum": 0 },
         "dropped_recent_duplicates": { "type": "integer", "minimum": 0 },
         "channels": {

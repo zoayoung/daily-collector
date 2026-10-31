@@ -6,13 +6,13 @@
 
 **Status:** ready-for-agent
 
-- [ ] 候选集阶段硬剔除 Awesome 列表：仓库名含 `awesome`，或描述以 curated list 开头（均不区分大小写）
-- [ ] 候选集阶段硬剔除无描述仓库：缺失、`null` 或去空白后为空
-- [ ] 实施顺序为「搜索去重 → 通道计数 → 排除 → 重复窗口过滤 → eligible」，通道计数仍等于候选总数
-- [ ] 采集统计新增可选 `excluded`（非负整数），满足 `candidates - excluded - dropped_recent_duplicates = eligible`
-- [ ] 校验按上述恒等式校验；旧产物无 `excluded` 时按 0 处理并继续通过
-- [ ] `gaps` 以现有文案风格记录被排除的数量
-- [ ] 测试通过采集与校验 CLI 验证：两类排除命中、统计恒等、旧产物兼容
+- [x] 候选集阶段硬剔除 Awesome 列表：仓库名含 `awesome`，或描述以 curated list 开头（均不区分大小写）
+- [x] 候选集阶段硬剔除无描述仓库：缺失、`null` 或去空白后为空
+- [x] 实施顺序为「搜索去重 → 通道计数 → 排除 → 重复窗口过滤 → eligible」，通道计数仍等于候选总数
+- [x] 采集统计新增可选 `excluded`（非负整数），满足 `candidates - excluded - dropped_recent_duplicates = eligible`
+- [x] 校验按上述恒等式校验；旧产物无 `excluded` 时按 0 处理并继续通过
+- [x] `gaps` 以现有文案风格记录被排除的数量
+- [x] 测试通过采集与校验 CLI 验证：两类排除命中、统计恒等、旧产物兼容
 
 **Acceptance evidence:** 回放响应中放入 Awesome 列表、无描述仓库与正常仓库，采集产物只保留正常仓库，统计恒等式成立；删除 `excluded` 的旧产物仍校验通过。
 

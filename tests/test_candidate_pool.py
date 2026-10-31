@@ -165,13 +165,16 @@ class CandidatePoolTest(CliCase):
             data["stats"],
             {
                 "candidates": 3,
+                "excluded": 0,
                 "eligible": 2,
                 "dropped_recent_duplicates": 1,
                 "channels": {"star_bands": 3, "new_repos": 0, "new_7d": 0},
             },
         )
         self.assertEqual(
-            data["stats"]["candidates"] - data["stats"]["dropped_recent_duplicates"],
+            data["stats"]["candidates"]
+            - data["stats"]["excluded"]
+            - data["stats"]["dropped_recent_duplicates"],
             data["stats"]["eligible"],
         )
         self.assertGreaterEqual(data["stats"]["eligible"], len(data["github"]))

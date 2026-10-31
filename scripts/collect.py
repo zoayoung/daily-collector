@@ -133,6 +133,18 @@ def is_new_burst(repo: dict, gain_day: str) -> bool:
     return created >= cutoff and isinstance(total, int) and total >= NEW_BURST_MIN_STARS
 
 
+def is_excluded(repo: dict) -> bool:
+    """候选集硬剔除：Awesome 列表与无 description 的仓库。"""
+    name = repo.get("full_name") or ""
+    if "awesome" in name.rsplit("/", 1)[-1].lower():
+        return True
+    description = repo.get("description")
+    if not isinstance(description, str) or not description.strip():
+        return True
+    text = description.strip().lower()
+    return text.startswith(("a curated list", "curated list"))
+
+
 def search_page(query: str, page: int) -> list[dict]:
     params = urllib.parse.urlencode(
         {
@@ -231,20 +243,25 @@ def build(day: str, gain_day: str) -> dict:
     if not candidates:
         raise RuntimeError("搜索 API 未返回任何候选")
 
+    kept = [(channel, repo) for channel, repo in candidates if not is_excluded(repo)]
+    excluded = len(candidates) - len(kept)
     recent = recent_duplicates(day, window_days)
     eligible = [
         (channel, repo)
-        for channel, repo in candidates
+        for channel, repo in kept
         if repo["full_name"].lower() not in recent
     ]
-    dropped_recent_duplicates = len(candidates) - len(eligible)
+    dropped_recent_duplicates = len(kept) - len(eligible)
     if not eligible:
-        raise RuntimeError(f"按 {window_days} 天重复窗口过滤后没有任何候选")
+        raise RuntimeError(
+            f"排除与 {window_days} 天重复窗口过滤后没有任何候选"
+        )
     channels = {channel: 0 for channel in CHANNELS}
     for channel, _ in candidates:
         channels[channel] += 1
     stats = {
         "candidates": len(candidates),
+        "excluded": excluded,
         "eligible": len(eligible),
         "dropped_recent_duplicates": dropped_recent_duplicates,
         "channels": channels,
@@ -317,7 +334,8 @@ def build(day: str, gain_day: str) -> dict:
     gaps.insert(
         0,
         f"候选 {len(candidates)} 个（{channel_summary}），"
-        f"{window_days} 天窗口剔除 {dropped_recent_duplicates} 个，入榜 {len(picked)} 个",
+        f"排除 {excluded} 个，{window_days} 天窗口剔除 {dropped_recent_duplicates} 个，"
+        f"入榜 {len(picked)} 个",
     )
     gaps.insert(
         1,

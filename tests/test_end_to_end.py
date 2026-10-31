@@ -182,7 +182,13 @@ class EndToEndTest(unittest.TestCase):
         collect = json.loads((self.work / DAY / "collect.json").read_text(encoding="utf-8"))
         stats = collect["stats"]
         self.assertEqual(len(collect["github"]), 50)
-        self.assertEqual(stats["candidates"] - stats["dropped_recent_duplicates"], stats["eligible"])
+        self.assertEqual(
+            stats["candidates"]
+            - stats["excluded"]
+            - stats["dropped_recent_duplicates"],
+            stats["eligible"],
+        )
+        self.assertEqual(stats["excluded"], 0)
         self.assertEqual(stats["candidates"], 52)
         self.assertEqual(stats["eligible"], 51)
         self.assertEqual(stats["dropped_recent_duplicates"], 1)
