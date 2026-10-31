@@ -74,6 +74,29 @@ class CandidateExclusionTest(CliCase):
             stats["eligible"],
         )
 
+    def test_excludes_repositories_with_non_string_description(self) -> None:
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [
+            repo("owner/number", 500, 123),
+            repo("owner/object", 450, {"text": "一个项目"}),
+            repo("owner/boolean", 400, True),
+            repo("owner/list", 350, ["一个项目"]),
+            repo("owner/plain", 300),
+        ]
+
+        data, _ = self.collect(pages)
+
+        self.assertEqual([entry["full_name"] for entry in data["github"]], ["owner/plain"])
+        stats = data["stats"]
+        self.assertEqual(stats["candidates"], 5)
+        self.assertEqual(stats["excluded"], 4)
+        self.assertEqual(stats["eligible"], 1)
+        self.assertEqual(
+            stats["candidates"] - stats["excluded"] - stats["dropped_recent_duplicates"],
+            stats["eligible"],
+        )
+        self.assertTrue(any("排除 4 个" in gap for gap in data["gaps"]), data["gaps"])
+
     def test_exclusion_happens_before_duplicate_window_filter(self) -> None:
         self.output.mkdir(parents=True)
         (self.output / "2026-09-21.md").write_text(
