@@ -25,7 +25,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _common import (
     NEW_BURST_MIN_STARS,
-    NEW_BURST_WINDOW_DAYS,
     STATS_CANDIDATES,
     STATS_CHANNELS,
     STATS_DROPPED_RECENT_DUPLICATES,
@@ -36,6 +35,7 @@ from _common import (
     is_date,
     is_new_burst,
     load_validation_rules,
+    new_burst_cutoff,
     read_json,
     recent_duplicates,
     stamp,
@@ -178,7 +178,9 @@ def search_page(query: str, page: int) -> list[dict]:
     return payload.get("items", [])
 
 
-def search_candidates(day: str, gain_day: str, gaps: list[str]) -> list[tuple[str, dict]]:
+def search_candidates(
+    day: str, gain_day: str, burst_window_days: int, gaps: list[str]
+) -> list[tuple[str, dict]]:
     cutoff = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
     collected: list[tuple[str, dict]] = []
     for star_range in STAR_RANGES:
@@ -205,7 +207,7 @@ def search_candidates(day: str, gain_day: str, gaps: list[str]) -> list[tuple[st
         if len(items) < PER_PAGE:
             break
 
-    fresh_cutoff = (date.fromisoformat(gain_day) - timedelta(days=NEW_BURST_WINDOW_DAYS)).isoformat()
+    fresh_cutoff = new_burst_cutoff(gain_day, burst_window_days)
     query = f"created:>={fresh_cutoff} stars:>={NEW_BURST_MIN_STARS}"
     for page in range(1, MAX_PAGES + 1):
         try:
@@ -267,10 +269,11 @@ def build(day: str, gain_day: str) -> dict:
     gaps: list[str] = []
     rules = load_validation_rules()
     window_days = rules["dedupe_window_days"]
+    burst_window_days = rules["new_burst_window_days"]
     baselines = load_baselines(day)
     yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
 
-    candidates = search_candidates(day, gain_day, gaps)
+    candidates = search_candidates(day, gain_day, burst_window_days, gaps)
     if not candidates:
         raise RuntimeError("搜索 API 未返回任何候选")
 
@@ -347,7 +350,16 @@ def build(day: str, gain_day: str) -> dict:
     all_zero_gain = not any(repo["stars_today"] for repo in with_gain)
 
     def rank_key(repo: dict) -> tuple[int, int, int]:
-        layer = 0 if is_new_burst(repo.get("created_at"), repo.get("stars_total"), gain_day) else 1
+        layer = (
+            0
+            if is_new_burst(
+                repo.get("created_at"),
+                repo.get("stars_total"),
+                gain_day,
+                burst_window_days,
+            )
+            else 1
+        )
         within = 0 if all_zero_gain else repo["stars_today"]
         return layer, -within, -(repo["stars_total"] or 0)
 
