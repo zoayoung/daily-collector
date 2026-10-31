@@ -168,6 +168,7 @@ class CandidatePoolTest(CliCase):
                 "excluded": 0,
                 "eligible": 2,
                 "dropped_recent_duplicates": 1,
+                "readme_dropped": 0,
                 "channels": {"star_bands": 3, "new_repos": 0, "new_7d": 0},
             },
         )

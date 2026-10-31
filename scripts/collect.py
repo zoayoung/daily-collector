@@ -1,4 +1,4 @@
-"""采集脚本：GitHub 搜索 API（4 个 star 区间 + 新仓库通道）→ 数据归属日新增 star → 排序取前 50 → collect.json。
+"""采集脚本：GitHub 搜索 API（三条通道）→ 数据归属日新增 star → 分层排序 → README 门槛 → 取前 50 → collect.json。
 
 用法：
     uv run python scripts/collect.py --date 2026-10-21
@@ -46,6 +46,7 @@ NEW_BURST_WINDOW_DAYS = 7
 MAX_PAGES = 2
 PER_PAGE = 100
 MAX_HISTORY_CALLS = 150
+MAX_README_CHECKS = 100
 PICK_LIMIT = 50
 
 
@@ -251,6 +252,18 @@ def star_history(full_name: str, day: str) -> int | None:
     return None
 
 
+def check_readme(full_name: str) -> tuple[bool, str | None]:
+    """检查入榜候选是否有 README。404 视为无 README；其他错误保留候选并回传原因。"""
+    url = f"{API}/repos/{full_name}/readme"
+    try:
+        get_json(url)
+    except RuntimeError as error:
+        if str(error).startswith("HTTP 404"):
+            return False, None
+        return True, str(error)
+    return True, None
+
+
 def build(day: str, gain_day: str) -> dict:
     gaps: list[str] = []
     rules = load_validation_rules()
@@ -340,11 +353,32 @@ def build(day: str, gain_day: str) -> dict:
         return layer, -within
 
     ranked = sorted(with_gain, key=rank_key)
-    picked = ranked[:PICK_LIMIT]
-    if not picked:
+    if not ranked:
         raise RuntimeError(
             "没有任何候选能取到数据归属日新增 star（需要上一自然日的本地基线，或可用的 star 历史接口）"
         )
+
+    picked: list[dict] = []
+    readme_dropped = 0
+    readme_calls = 0
+    readme_unchecked = 0
+    for index, repo in enumerate(ranked):
+        if len(picked) >= PICK_LIMIT:
+            break
+        if readme_calls >= MAX_README_CHECKS:
+            readme_unchecked = len(ranked) - index
+            break
+        readme_calls += 1
+        present, error = check_readme(repo["full_name"])
+        if not present:
+            readme_dropped += 1
+            continue
+        if error:
+            gaps.append(f"{repo['full_name']} README 检查失败：{error}")
+        picked.append(repo)
+    if not picked:
+        raise RuntimeError("没有任何候选通过 README 检查")
+    stats["readme_dropped"] = readme_dropped
     missing = [repo["full_name"] for repo in picked if not repo["url"] or not repo["full_name"]]
 
     channel_summary = "、".join(
@@ -354,7 +388,7 @@ def build(day: str, gain_day: str) -> dict:
         0,
         f"候选 {len(candidates)} 个（{channel_summary}），"
         f"排除 {excluded} 个，{window_days} 天窗口剔除 {dropped_recent_duplicates} 个，"
-        f"入榜 {len(picked)} 个",
+        f"README 缺失剔除 {readme_dropped} 个，入榜 {len(picked)} 个",
     )
     gaps.insert(
         1,
@@ -375,7 +409,12 @@ def build(day: str, gain_day: str) -> dict:
             f"历史增量预算耗尽（上限 {MAX_HISTORY_CALLS} 次），"
             f"另有 {untried} 个候选未尝试计算增量"
         )
-    if len(ranked) > len(picked):
+    if readme_unchecked > 0:
+        gaps.append(
+            f"README 检查预算耗尽（上限 {MAX_README_CHECKS} 次），"
+            f"另有 {readme_unchecked} 条未做 README 检查"
+        )
+    if len(picked) >= PICK_LIMIT and len(ranked) > len(picked):
         gaps.append(f"未纳入 {len(ranked) - len(picked)} 个候选（排名在 {PICK_LIMIT} 之后）")
     if picked and not any(repo["stars_today"] for repo in picked):
         gaps.append(

@@ -77,6 +77,20 @@ def history_names(requests: list[str]) -> list[str]:
     ]
 
 
+def readme_name(path: str) -> str:
+    """从 README 请求路径解析仓库 full_name。"""
+    return path.split("/repos/", 1)[1].split("/readme", 1)[0]
+
+
+def readme_names(requests: list[str]) -> list[str]:
+    """按请求顺序返回被检查 README 的仓库 full_name。"""
+    return [
+        readme_name(path)
+        for path in requests
+        if path.startswith("/repos/") and path.endswith("/readme")
+    ]
+
+
 def fixture_bytes(name: str) -> bytes:
     return (FIXTURE_DIR / name).read_bytes()
 
@@ -117,6 +131,7 @@ class FixtureServer:
     search_failures 按 (通道, 页码) 指定要返回的 HTTP 状态码，用于模拟单通道失败。
     star_history_body 可覆盖 star 历史响应，用于模拟当天增量尚未产生的全 0 返回。
     history_failures 指定要返回 500 的仓库 full_name，用于模拟单条历史查询失败。
+    readme_failures 按 full_name 指定 README 端点的 HTTP 状态码；默认返回 200。
     """
 
     def __init__(
@@ -126,12 +141,14 @@ class FixtureServer:
         search_failures: dict[tuple[str, int], int] | None = None,
         star_history_body: object | None = None,
         history_failures: set[str] | None = None,
+        readme_failures: dict[str, int] | None = None,
     ) -> None:
         self.break_first_search = break_first_search
         self.search_pages = search_pages or {}
         self.search_failures = search_failures or {}
         self.star_history_body = star_history_body
         self.history_failures = history_failures or set()
+        self.readme_failures = readme_failures or {}
         self.requests: list[str] = []
         self._search_requests = 0
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
@@ -169,6 +186,15 @@ class FixtureServer:
                         return
                     body = outer._search_body(self.path)
                     broken = outer.break_first_search and outer._search_requests == 1
+                elif self.path.startswith("/repos/") and self.path.endswith("/readme"):
+                    status = outer.readme_failures.get(readme_name(self.path))
+                    if status is not None:
+                        self.send_response(status)
+                        self.send_header("Content-Length", "0")
+                        self.end_headers()
+                        return
+                    body = b"{}"
+                    broken = False
                 elif "/stargazers/history" in self.path:
                     full_name = star_history_name(self.path)
                     if full_name in outer.history_failures:
