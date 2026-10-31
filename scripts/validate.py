@@ -18,9 +18,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _common import (
     SCHEMA_DIR,
+    STATS_CANDIDATES,
+    STATS_CHANNELS,
+    STATS_DROPPED_BY_ORGANIZE,
+    STATS_DROPPED_RECENT_DUPLICATES,
+    STATS_ELIGIBLE,
+    STATS_EXCLUDED,
+    STATS_GITHUB_COUNT,
     WORK_DIR,
     cjk_count,
     is_date,
+    is_new_burst,
     load_validation_rules,
     published_history,
     read_json,
@@ -119,10 +127,6 @@ def _check_duplicate_window(
         errors.append(f"{where} repeat.last_seen={last_seen} 应等于最近发布日期 {latest}")
 
 
-NEW_BURST_WINDOW_DAYS = 7
-NEW_BURST_MIN_STARS = 100
-
-
 def _check_order(items: list[dict], day: str | None, errors: list[str], where: str) -> None:
     """分层硬校验：新爆款恒在老项目之前，层内按 stars_today（全零时 stars_total）降序。
 
@@ -134,26 +138,20 @@ def _check_order(items: list[dict], day: str | None, errors: list[str], where: s
         return
     all_zero = all(value == 0 for value in values)
     boundary = None
-    cutoff = None
     if day and is_date(day):
         boundary = (date.fromisoformat(day) - timedelta(days=8)).isoformat()
-        cutoff = (
-            date.fromisoformat(day) - timedelta(days=NEW_BURST_WINDOW_DAYS)
-        ).isoformat()
 
     def layer(item: dict) -> int:
-        if cutoff is None:
+        if day is None or not is_date(day):
             return 1
-        created = item.get("created_at") or ""
-        total = item.get("stars_total")
-        if created >= cutoff and isinstance(total, int) and total >= NEW_BURST_MIN_STARS:
+        if is_new_burst(item.get("created_at"), item.get("stars_total"), day):
             return 0
         return 1
 
     strict = [
         (index, layer(item))
         for index, item in enumerate(items)
-        if boundary is None or (item.get("created_at") or "") != boundary
+        if boundary is None or (item.get("created_at") or "")[:10] != boundary
     ]
     new_positions = [index for index, value in strict if value == 0]
     old_positions = [index for index, value in strict if value == 1]
@@ -220,44 +218,53 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
         stats = data.get("stats")
         if stats is not None:
             _unknown(stats, stats_keys, "stats", errors)
-            candidates = stats.get("candidates")
-            eligible = stats.get("eligible")
-            excluded = stats.get("excluded", 0)
-            dropped = stats.get("dropped_recent_duplicates")
+            candidates = stats.get(STATS_CANDIDATES)
+            eligible = stats.get(STATS_ELIGIBLE)
+            excluded = stats.get(STATS_EXCLUDED, 0)
+            dropped = stats.get(STATS_DROPPED_RECENT_DUPLICATES)
             if candidates - excluded - dropped != eligible:
                 errors.append(
-                    "stats.candidates - stats.excluded - stats.dropped_recent_duplicates="
-                    f"{candidates - excluded - dropped} 与 stats.eligible={eligible} 不一致"
+                    f"stats.{STATS_CANDIDATES} - stats.{STATS_EXCLUDED} - "
+                    f"stats.{STATS_DROPPED_RECENT_DUPLICATES}="
+                    f"{candidates - excluded - dropped} "
+                    f"与 stats.{STATS_ELIGIBLE}={eligible} 不一致"
                 )
             if eligible < len(items):
                 errors.append(
-                    f"stats.eligible={eligible} 小于入榜条数 {len(items)}"
+                    f"stats.{STATS_ELIGIBLE}={eligible} 小于入榜条数 {len(items)}"
                 )
-            channels = stats.get("channels")
+            channels = stats.get(STATS_CHANNELS)
             if channels is not None:
                 channel_keys = _keys(
-                    schema["properties"]["stats"]["properties"]["channels"], contracts
+                    schema["properties"]["stats"]["properties"][STATS_CHANNELS],
+                    contracts,
                 )
                 total = sum(
                     value for key, value in channels.items() if key in channel_keys
                 )
                 if total != candidates:
                     errors.append(
-                        f"stats.channels 合计 {total} 与 stats.candidates={candidates} 不一致"
+                        f"stats.{STATS_CHANNELS} 合计 {total} "
+                        f"与 stats.{STATS_CANDIDATES}={candidates} 不一致"
                     )
 
     if stage in {"analyze", "organize"}:
         stats = data.get("stats") or {}
         _unknown(stats, stats_keys, "stats", errors)
-        if stats.get("github_count") != len(items):
-            errors.append(f"stats.github_count={stats.get('github_count')} 与条目数 {len(items)} 不一致")
+        if stats.get(STATS_GITHUB_COUNT) != len(items):
+            errors.append(
+                f"stats.{STATS_GITHUB_COUNT}={stats.get(STATS_GITHUB_COUNT)} "
+                f"与条目数 {len(items)} 不一致"
+            )
         _check_order(items, day, errors, "github")
 
     if stage == "analyze":
         stats = data.get("stats") or {}
-        dropped = stats.get("dropped_recent_duplicates")
+        dropped = stats.get(STATS_DROPPED_RECENT_DUPLICATES)
         if not isinstance(dropped, int) or dropped < 0:
-            errors.append("stats.dropped_recent_duplicates 必须是非负整数")
+            errors.append(
+                f"stats.{STATS_DROPPED_RECENT_DUPLICATES} 必须是非负整数"
+            )
         collect_path = (path.parent if path else None)
         collect_path = collect_path / "collect.json" if collect_path else None
         if collect_path and collect_path.exists():
@@ -267,11 +274,11 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
                 collected = None
             if isinstance(collected, dict):
                 expected_dropped = (collected.get("stats") or {}).get(
-                    "dropped_recent_duplicates", 0
+                    STATS_DROPPED_RECENT_DUPLICATES, 0
                 )
                 if dropped != expected_dropped:
                     errors.append(
-                        "stats.dropped_recent_duplicates="
+                        f"stats.{STATS_DROPPED_RECENT_DUPLICATES}="
                         f"{dropped} 应沿用 collect.json 的 {expected_dropped}"
                     )
                 collected_items = collected.get("github") or []
@@ -324,8 +331,8 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
         for index, theme in enumerate(overview.get("themes") or [], start=1):
             _unknown(theme, theme_keys, f"overview.themes[{index}]", errors)
         stats = data.get("stats") or {}
-        if not isinstance(stats.get("dropped_by_organize"), int):
-            errors.append("stats.dropped_by_organize 必须是整数")
+        if not isinstance(stats.get(STATS_DROPPED_BY_ORGANIZE), int):
+            errors.append(f"stats.{STATS_DROPPED_BY_ORGANIZE} 必须是整数")
 
         analyze_path = (path.parent if path else None)
         analyze_path = analyze_path / "analyze.json" if analyze_path else None
@@ -336,16 +343,19 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
                 analyzed = None
             if isinstance(analyzed, dict):
                 expected = len(analyzed.get("github") or []) - len(items)
-                if stats.get("dropped_by_organize") != expected:
+                if stats.get(STATS_DROPPED_BY_ORGANIZE) != expected:
                     errors.append(
-                        "stats.dropped_by_organize="
-                        f"{stats.get('dropped_by_organize')} 与「分析条目数 - 整理条目数 = {expected}」不一致"
+                        f"stats.{STATS_DROPPED_BY_ORGANIZE}="
+                        f"{stats.get(STATS_DROPPED_BY_ORGANIZE)} "
+                        f"与「分析条目数 - 整理条目数 = {expected}」不一致"
                     )
-                analyzed_dropped = (analyzed.get("stats") or {}).get("dropped_recent_duplicates")
-                if stats.get("dropped_recent_duplicates") != analyzed_dropped:
+                analyzed_dropped = (analyzed.get("stats") or {}).get(
+                    STATS_DROPPED_RECENT_DUPLICATES
+                )
+                if stats.get(STATS_DROPPED_RECENT_DUPLICATES) != analyzed_dropped:
                     errors.append(
-                        "stats.dropped_recent_duplicates 应沿用 analyze.json 的 "
-                        f"{analyzed_dropped}"
+                        f"stats.{STATS_DROPPED_RECENT_DUPLICATES} "
+                        f"应沿用 analyze.json 的 {analyzed_dropped}"
                     )
                 analyzed_names = {item.get("full_name") for item in analyzed.get("github") or []}
                 invented = [name for name in names if name not in analyzed_names]

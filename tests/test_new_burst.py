@@ -234,6 +234,30 @@ class LayeredCollectTest(CliCase):
             [50, 1, 100, 10],
         )
 
+    def test_partial_zero_gain_uses_total_as_tiebreak_within_new_layer(self) -> None:
+        baseline = self.work / "2026-10-20" / "collect.json"
+        baseline.parent.mkdir(parents=True)
+        baseline.write_text(
+            json.dumps({"github": [{"full_name": "old/boosted", "stars_total": 300}]}),
+            encoding="utf-8",
+        )
+        history = [{"week": 1792281600, "total": 0, "days": [0, 0, 0, 0, 0, 0, 0]}]
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [search_item("old/boosted", 305)]
+        pages[(NEW_7D_CHANNEL, 1)] = [
+            search_item(f"new/burst{index:02d}", 100 + index, created_at="2026-10-19T00:00:00Z")
+            for index in range(50)
+        ]
+
+        data, _ = self.collect(pages, star_history_body=history)
+
+        totals = [entry["stars_total"] for entry in data["github"]]
+        self.assertEqual(len(totals), 50)
+        self.assertEqual(totals, sorted(totals, reverse=True))
+        self.assertEqual([entry["stars_today"] for entry in data["github"]], [0] * 50)
+        result = self.validate("--file", str(self.work / DAY / "collect.json"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_all_zero_gain_keeps_layers_and_sorts_by_total_within_layer(self) -> None:
         week = 1792281600
         history = [{"week": week, "total": 0, "days": [0, 0, 0, 0, 0, 0, 0]}]
@@ -356,6 +380,14 @@ class LayeredValidationTest(CliCase):
             with self.subTest(items=[item["full_name"] for item in items]):
                 result = self.validate_items(items)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_created_at_with_time_component_still_hits_boundary_and_layer(self) -> None:
+        boundary = collect_item("edge/repo", f"{BOUNDARY}T00:00:00Z", 150, 5)
+        strict_new = collect_item("new/burst", "2026-10-19T00:00:00Z", 150, 10)
+
+        result = self.validate_items([boundary, strict_new, self.old()])
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_boundary_does_not_mask_strict_old_before_new(self) -> None:
         boundary = collect_item("edge/repo", BOUNDARY, 150, 5)
