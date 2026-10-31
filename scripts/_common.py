@@ -24,7 +24,7 @@ SPEC = ROOT / ".scratch" / "knowledge-daily" / "spec.md"
 TIMEZONE = timezone(timedelta(hours=8))
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 CJK_RE = re.compile(r"[\u4e00-\u9fff]")
-HEADING_RE = re.compile(r"^###\s+\d+\.\s+(\S+/\S+)\s*$")
+HEADING_RE = re.compile(r"^###\s+\d+\.\s+(?:🆕\s+)?(\S+/\S+)\s*$")
 
 
 def _load_env_file(path: Path) -> None:

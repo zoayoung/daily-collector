@@ -15,6 +15,7 @@ import tempfile
 import threading
 import unittest
 import urllib.parse
+from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Self
@@ -25,6 +26,9 @@ DEFAULT_DAY = "2026-10-21"
 # 测试侧的预期区间集合：与生产常量独立书写，生产区间被改动时这里会失败。
 EXPECTED_STAR_RANGES = ("100..500", "500..2000", "2000..10000", ">10000")
 NEW_REPOS_CHANNEL = "new_repos"
+NEW_7D_CHANNEL = "new_7d"
+NEW_BURST_WINDOW_DAYS = 7
+NEW_BURST_MIN_STARS = 100
 
 
 def fixture(name: str) -> object:
@@ -70,11 +74,13 @@ def fixture_bytes(name: str) -> bytes:
 
 
 def search_request(path: str) -> tuple[str, int]:
-    """从搜索请求路径解析通道与页码；新仓库通道返回 NEW_REPOS_CHANNEL。"""
+    """从搜索请求路径解析通道与页码；按 star 阈值区分新仓库与近 7 天新建通道。"""
     query = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
     text = (query.get("q") or [""])[0]
     page = int((query.get("page") or ["1"])[0])
     if "created:" in text:
+        if "stars:>=100" in text:
+            return NEW_7D_CHANNEL, page
         return NEW_REPOS_CHANNEL, page
     match = re.search(r"stars:(\S+)", text)
     star_range = match.group(1) if match else ""
@@ -127,7 +133,7 @@ class FixtureServer:
         key = search_request(path)
         value = self.search_pages.get(key)
         if value is None:
-            if key[0] == NEW_REPOS_CHANNEL:
+            if key[0] in {NEW_REPOS_CHANNEL, NEW_7D_CHANNEL}:
                 return search_payload([])
             return fixture_bytes("search_repositories.json")
         if isinstance(value, (bytes, bytearray)):
@@ -196,10 +202,19 @@ class FixtureServer:
         self._server.server_close()
 
 
+def is_new_burst(item: dict, day: str) -> bool:
+    """新爆款由 created_at 与 stars_total 推导：创建日期在 day 前 7 天内且累计 star ≥100。"""
+    created = item.get("created_at") or ""
+    total = item.get("stars_total")
+    cutoff = (date.fromisoformat(day) - timedelta(days=NEW_BURST_WINDOW_DAYS)).isoformat()
+    return created >= cutoff and isinstance(total, int) and total >= NEW_BURST_MIN_STARS
+
+
 def render_report(
     organized: dict, score: dict | None = None, gain_date: str | None = None
 ) -> str:
     """按 spec「渲染模板」机械填充；只做排版，不改写文字与数字。"""
+    base_day = gain_date or organized["date"]
     lines = [f"# 知识日报 · {organized['date']}", ""]
     if gain_date and gain_date != organized["date"]:
         lines.extend(["> 统计窗口：昨日到今日（UTC+8）", ""])
@@ -234,9 +249,10 @@ def render_report(
         matched = scores.get((item["rank"], item["full_name"]))
         if matched:
             star_line += f" · 评分：{matched['total']} / {matched['grade']}"
+        marker = "🆕 " if is_new_burst(item, base_day) else ""
         lines.extend(
             [
-                f"### {item['rank']}. {item['full_name']}",
+                f"### {item['rank']}. {marker}{item['full_name']}",
                 "",
                 f"- 标签：{tags}",
                 star_line,
@@ -295,13 +311,15 @@ class CliCase(unittest.TestCase):
         self,
         search_pages: dict[tuple[str, int], object],
         day: str = DEFAULT_DAY,
+        gain_date: str | None = None,
         **kwargs: object,
     ) -> tuple[dict, list[str]]:
+        args = ["collect.py", "--date", day]
+        if gain_date is not None:
+            args.extend(["--gain-date", gain_date])
         with FixtureServer(search_pages=search_pages, **kwargs) as server:
             result = run_cli(
-                "collect.py",
-                "--date",
-                day,
+                *args,
                 work_dir=self.work,
                 output_dir=self.output,
                 api=server.url,

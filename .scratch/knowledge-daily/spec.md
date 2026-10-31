@@ -13,7 +13,7 @@
 ## 方案
 
 - 用户说「开始今天的知识采集」，一次跑完 **采集 → 分析 → 整理 → 渲染** 四段，并汇报 token 成本。本地与 GitHub Actions 共用同一套步骤；CI 定时任务以「开始知识采集；发布日 YYYY-MM-DD；数据归属 YYYY-MM-DD」触发，发布日为运行日，数据归属为前一日（UTC+8）。
-- **采集（Python 脚本，必须使用采集凭证）**：按多个 star 区间与新仓库通道分别搜索、按 `full_name` 去重得到约 1000 个唯一候选（star 区间约 800，其余来自近 30 天新建）；先用已发布日报过滤 30 天窗口内的项目，再逐个算出「数据归属日新增 star」，按它降序写入前 50 条到 `collect.json`。
+- **采集（Python 脚本，必须使用采集凭证）**：按多个 star 区间、新仓库与近 7 天新建三条通道分别搜索、按 `full_name` 去重得到约 1000 个唯一候选（star 区间约 800，其余来自近 30 天新建与近 7 天新建）；先用已发布日报过滤 30 天窗口内的项目，再逐个算出「数据归属日新增 star」，按分层排序（新爆款在前、层内按增量降序，全零时层内按累计 star 降序）写入前 50 条到 `collect.json`。
 - **分析（子代理）**：只做内容分析——自由打标签（不受固定主题表约束）、给 30 天外再次出现的项目标 `repeat.last_seen`、写分析要点与评价，写 `analyze.json`；不再自行剔除 30 天内项目。
 - **整理（子代理）**：职责分离后的定稿者——从分析结果中定稿 10–15 条、润色为成稿、定排序与概览，写 `organize.json`；批量剔除时记数并按批次说明理由。
 - **渲染（主代理）**：按固定模板把 `organize.json` 机械填充为 `daily-knowledge/YYYY-MM-DD.md`，不改写文字；每条附总 star、数据归属日新增 star 与质量评分。
@@ -31,7 +31,7 @@
 6. 作为读者，我希望采集只依赖 GitHub 一个数据源，以便口径单一、维护简单。
 7. 作为维护者，我希望采集由 Python 脚本完成而不是子代理交互抓取，以便口径可复现、token 成本可预期。
 8. 作为维护者，我希望采集脚本必须携带 `GITHUB_TOKEN` 认证运行，以便配额稳定、口径可预期。
-9. 作为读者，我希望用 GitHub 搜索 API 拉候选：star 区间通道取「近 1 日有推送、累计 star≥100」，新仓库通道取「近 30 天创建、累计 star≥50」，以便同时覆盖活跃老项目与刚发布的新爆款。
+9. 作为读者，我希望用 GitHub 搜索 API 拉候选：star 区间通道取「近 1 日有推送、累计 star≥100」，新仓库通道取「近 30 天创建、累计 star≥50」，近 7 天新建通道取「数据归属日前 7 天创建、累计 star≥100」，以便同时覆盖活跃老项目与刚发布的新爆款。
 10. 作为读者，我希望按「数据归属日新增 star」排序，以便看到当天真正在涨的项目。
 11. 作为读者，我希望数据归属日新增 star 优先用本地历史差分、无历史时用官方 star 历史接口兜底，以便在零额外成本与准确性之间取平衡。
 12. 作为读者，我希望两次都拿不到星增量时如实记 null、不编造，以便数据可信。
@@ -125,7 +125,7 @@
 100. 作为维护者，我希望候选池按多个 star 区间分别搜索并按 `full_name` 去重，以便每月 300–450 个不重复项目有稳定来源。
 101. 作为维护者，我希望每个 star 区间最多翻 2 页，以便控制搜索调用与耗时。
 102. 作为维护者，我希望 star 历史兜底上限提高到 150 次/轮，以便扩大候选的增量覆盖率。
-103. 作为维护者，我希望 `collect.json` 写入 50 条并按 `stars_today` 降序，以便次日本地差分覆盖更多项目。
+103. 作为维护者，我希望 `collect.json` 写入 50 条并按分层排序（新爆款在前、层内按 `stars_today` 降序，全零时层内按 `stars_total` 降序），以便次日本地差分覆盖更多项目。
 104. 作为维护者，我希望 `collect.json` 新增可选的 `candidates`、`eligible`、`dropped_recent_duplicates` 统计，以便去重数量可核查，同时旧产物仍能通过校验。
 105. 作为维护者，我希望 30 天窗口的判定同时由采集脚本与 `validate.py` 执行，以便规则不依赖子代理自觉。
 106. 作为维护者，我希望 `validate.py` 对窗口内条目直接报错，不论是否有新进展，以便规则零例外。
@@ -154,16 +154,16 @@
 - CI 冒烟（交付门槛）：先在临时分支 `ci-smoke` 推送并 `workflow_dispatch` 真实跑通，覆盖 `force=true` 全流程与 `force=false` 跳过两种情形，再合并 `main`；不以 `act` 或本地 runner 代替真实 Actions。
 - 发布仓库：`https://github.com/zoayoung/daily-collector`（public），默认分支 `main`；本地用 `~/.ssh/git` 推送；仓库包含历史日报与现有测试。
 - 采集脚本：`scripts/collect.py`，由主代理用 `uv run python scripts/collect.py --date <发布日> --gain-date <数据归属日>` 执行；`--gain-date` 默认取 `KNOWLEDGE_GAIN_DATE`，再退回 `--date`；未给 `--date` 时依次取 `KNOWLEDGE_DATE` 与本地今天；`--dry-run` 打印 JSON 不落盘。脚本承担多查询候选池、30 天过滤、数据归属日新增 star、排序选取、`gaps` 与 `stats` 全流程，产物符合 `schemas/collect.schema.json`。
-- 候选池口径：两条通道并列。① star 区间通道：按 4 个 star 区间（`100..500`、`500..2000`、`2000..10000`、`>10000`）分别搜索，保留 `pushed:>=` 约束（取发布日前一天），每个区间 `per_page=100`、最多 2 页（第一页不足 100 条则不再翻页）；老项目只要今日快速上升，同样是有效候选。② 新仓库通道：按 `created:>=` 发布日前 30 天、`stars:>=50` 搜索，`sort=stars`、`order=desc`、`per_page=100`、最多 2 页（第一页不足 100 条则不再翻页）；不加 `pushed` 约束，近 30 天新建但久未推送的项目也能入候选。两路结果合并后按 `full_name` 大小写不敏感去重，保留首次出现的原始大小写（star 区间通道先收集，重叠项目计入该通道）；随后统一经过 30 天重复窗口过滤与增量计算。唯一候选约 1000 个（star 区间约 800，其余来自新仓库通道）。通道标记不写入 `github[]` 条目，仅以 `stats.channels` 的按通道汇总计数出现在产物中。
+- 候选池口径：三条通道并列。① star 区间通道：按 4 个 star 区间（`100..500`、`500..2000`、`2000..10000`、`>10000`）分别搜索，保留 `pushed:>=` 约束（取发布日前一天），每个区间 `per_page=100`、最多 2 页（第一页不足 100 条则不再翻页）；老项目只要今日快速上升，同样是有效候选。② 新仓库通道：按 `created:>=` 发布日前 30 天、`stars:>=50` 搜索，`sort=stars`、`order=desc`、`per_page=100`、最多 2 页（第一页不足 100 条则不再翻页）；不加 `pushed` 约束，近 30 天新建但久未推送的项目也能入候选。③ 近 7 天新建通道：按 `created:>=` **数据归属日**前 7 天、`stars:>=100` 搜索，`sort=stars`、`order=desc`、`per_page=100`、最多 2 页（第一页不足 100 条则不再翻页）；基准日与②不同（②取发布日、③取数据归属日），两者并存。三路结果按 star 区间 → 新仓库 → 近 7 天新建的顺序合并，按 `full_name` 大小写不敏感去重，保留首次出现的原始大小写与通道归属；随后统一经过 30 天重复窗口过滤与增量计算。通道标记不写入 `github[]` 条目，仅以 `stats.channels` 的按通道汇总计数出现在产物中；通道归属只用于统计，不决定分层。
 - 30 天重复窗口：以 `daily-knowledge/*.md` 中已发布的项目为准（读取 `### N. owner/repo` 标题行，大小写不敏感），窗口为 `[发布日-30, 发布日-1]`，**不含发布日**；窗口内出现过的项目零例外剔除。同日重跑不把发布日当天已发布内容当历史。
-- 采集过滤与计数：候选先去重，再按 30 天窗口剔除，剩余为 `eligible`；`dropped_recent_duplicates` 记录被剔除数。`collect.json` 新增可选 `stats: { candidates, eligible, dropped_recent_duplicates, channels }`；`channels` 为可选对象 `{ star_bands, new_repos }`，两个非负整数，按去重后的候选数统计，满足 `star_bands + new_repos = candidates`，与 `candidates` 自洽；旧产物无 `stats` 或 `channels` 仍有效。
+- 采集过滤与计数：候选先去重，再按 30 天窗口剔除，剩余为 `eligible`；`dropped_recent_duplicates` 记录被剔除数。`collect.json` 可选 `stats: { candidates, eligible, dropped_recent_duplicates, channels }`；`channels` 为可选对象 `{ star_bands, new_repos, new_7d }`，三个非负整数，按去重后的候选数统计。新产物写全三键且存在键之和等于 `candidates`；schema 不强制三键，校验只要求“存在的键之和 = candidates”，旧的两键产物仍有效；旧产物无 `stats` 或 `channels` 也仍有效。
 - 采集异常：未配置 `GITHUB_TOKEN`、所有搜索均失败、过滤后候选为空即脚本失败（退出码非 0、不写正式文件）；`star_history` 单次失败记 `gaps` 并把该条记 null。
-- 新增 star 口径：基线取 `work/**/collect.json` 中**日期早于发布日的最近一次**该 repo 的 `stars_total`；仅当基线恰为**发布日的上一自然日**时才用于差分（同日重跑不会读到自身产物）。优先级：① 本地差分 `stars_today_source=local_diff`，命中者不消耗预算；② 官方兜底 `GET /repos/{owner}/{repo}/stargazers/history`，按**数据归属日**查、按通道轮转取号（star 区间与新仓库两个通道交替各取一条，通道内仍按 `stars_total` 降序），总量 ≤150 次/轮，`stars_today_source=star_history`；③ 都不可得记 null，单次失败仍记 `gaps`。定时任务在清晨 06:00（UTC+8）窗口取数，数据归属日为发布日前一天：`stargazers/history` 按该日历日查；本地差分以上一发布日的 `collect.json` 为基线，窗口是上次采集到本次采集（约 24 小时，起点落在清晨），与日历日归属窗口错开约 6 小时，仅在拿不到 star 历史时作近似。
-- 排序与选取：在 `eligible` 中丢弃 `stars_today=null` 的候选，其余按 `stars_today` 降序取前 50；`stars_today` 全为 0 时退化为按 `stars_total` 降序；不设通道保底名额；不足 50 按实际数量输出，不足 10 在 `gaps` 说明。
+- 新增 star 口径：基线取 `work/**/collect.json` 中**日期早于发布日的最近一次**该 repo 的 `stars_total`；仅当基线恰为**发布日的上一自然日**时才用于差分（同日重跑不会读到自身产物）。优先级：① 本地差分 `stars_today_source=local_diff`，命中者不消耗预算；② 官方兜底 `GET /repos/{owner}/{repo}/stargazers/history`，按**数据归属日**查、按三个通道轮转取号（star 区间、新仓库、近 7 天新建交替各取一条，通道内仍按 `stars_total` 降序），总量 ≤150 次/轮，`stars_today_source=star_history`；③ 都不可得记 null，单次失败仍记 `gaps`。定时任务在清晨 06:00（UTC+8）窗口取数，数据归属日为发布日前一天：`stargazers/history` 按该日历日查；本地差分以上一发布日的 `collect.json` 为基线，窗口是上次采集到本次采集（约 24 小时，起点落在清晨），与日历日归属窗口错开约 6 小时，仅在拿不到 star 历史时作近似。
+- 排序与选取：在 `eligible` 中丢弃 `stars_today=null` 的候选，其余按分层排序取前 50：新爆款（`created_at >= 数据归属日 - 7 天` 且 `stars_total >= 100`，由现有字段推导、不写布尔字段）恒在老项目之前，层内按 `stars_today` 降序；所有 `stars_today` 为 0 时层内改按 `stars_total` 降序，分层不变；不设通道保底名额；不足 50 按实际数量输出，不足 10 在 `gaps` 说明。采集入榜、分析顺序、整理 `rank`、渲染顺序使用同一规则。
 - 认证（必填）：脚本从进程环境或项目根 `.env` 读取 `GITHUB_TOKEN`（兼容 `GH_TOKEN`），进程环境优先；缺失即失败，不退回未认证。`.env` 由脚本自行加载（opencode 不自动注入），`.env` 已被 git 忽略，模板见 `.env.example`。认证后配额：搜索 30 次/分、核心 5000 次/时。
 - 分析阶段：为 `collect.json` 的全部条目（通常 50 条）做自由标签与 `core`/`why` 分析要点；只给 30 天外再次出现的项目写 `repeat.last_seen`，**不再剔除 30 天内项目**。**不决定入选条数、不写 `rank`/`overview`**。`core`/`why` 为分析要点，不设 100 汉字硬限。
-- 整理阶段：从 analyze 候选中**定稿 10–15 条**（不足 10 按实际并在 `gaps` 说明），有权剔除但必须计入 `stats.dropped_by_organize`，`gaps` 按批次说明理由；负责 `rank`（按 `stars_today` 降序连续编号）、`overview`（自由标签合并 ≤6 组）、`core` ≤100 汉字（不计英文单词与数字）、`why` 一句评价与建议。
-- 渲染：主代理按固定模板机械填充 `organize.json`，文字与数字照抄、不改写；模板见「编排协议 · 渲染模板」。标题下放质量评分摘要，每条放 star 与评分；30 天外重复只输出「🔁 重复：上次 YYYY-MM-DD」，不再输出「新进展」。
+- 整理阶段：从 analyze 候选中**定稿 10–15 条**（不足 10 按实际并在 `gaps` 说明），有权剔除但必须计入 `stats.dropped_by_organize`，`gaps` 按批次说明理由；负责 `rank`（按分层排序连续编号：新爆款在前、层内按 `stars_today` 降序，全零时层内按 `stars_total` 降序）、`overview`（自由标签合并 ≤6 组）、`core` ≤100 汉字（不计英文单词与数字）、`why` 一句评价与建议。
+- 渲染：主代理按固定模板机械填充 `organize.json`，文字与数字照抄、不改写；模板见「编排协议 · 渲染模板」。标题下放质量评分摘要，每条放 star 与评分；新爆款标题为 `### {rank}. 🆕 {full_name}`，非新爆款标题不变；概览不新增“新爆款”分组；30 天外重复只输出「🔁 重复：上次 YYYY-MM-DD」，不再输出「新进展」。
 - 校验：`schemas/*.schema.json` 是字段唯一来源（spec 只解释语义），`scripts/validate.py` 用 jsonschema + 跨文件语义检查；语义阈值见 `config/validation-rules.json`（`dedupe_window_days`、`collect_min_items`、`report_min_items`、`report_max_items`、`core_max_cjk`）。默认校验当日 `work/` 产物，`--all` 校验最近一个含阶段产物的 work 日期目录（跳过只有 tokens.json 的目录），`--file` 可单独校验。
 - 30 天硬校验：`validate.py` 对 analyze/organize 中的每条按 `full_name` 查窗口内历史；命中即报错，不论 `repeat` 或新进展。30 天外出现的项目必须带 `repeat.last_seen`，且 `last_seen` 等于最近一次发布日期。
 - 统计透传：`collect.stats.dropped_recent_duplicates` 存在时，analyze 与 organize 的同名字段必须与上游一致；旧 collect 无 `stats` 时按 0 处理。
@@ -240,9 +240,9 @@
 
 `schemas/collect.schema.json`：`date`、`collected_at`、`github[]`（collect 字段：full_name/url/description/language/stars_total/stars_today/stars_today_source/forks/created_at/pushed_at）、可选的 `stats`、`gaps[]`。
 
-- `github` 条数 ≤50（通常 50），按 `stars_today` 降序，不含 null；不足 10 条在 `gaps` 说明。
-- `stats` 可选：`{ "candidates": 993, "eligible": 949, "dropped_recent_duplicates": 44, "channels": { "star_bands": 800, "new_repos": 193 } }`；`channels` 可省略，旧产物无该字段仍有效。
-- `gaps` 如实记录抓取异常、字段缺失、30 天剔除数、新仓库通道候选数、未纳入候选数量与 star_history 调用次数；新仓库通道候选数单独成行（`新仓库通道贡献 N 条候选`）。
+- `github` 条数 ≤50（通常 50），按分层排序（新爆款在前、层内按 `stars_today` 降序，全零时层内按 `stars_total` 降序），不含 null；不足 10 条在 `gaps` 说明。
+- `stats` 可选：`{ "candidates": 993, "eligible": 949, "dropped_recent_duplicates": 44, "channels": { "star_bands": 800, "new_repos": 193, "new_7d": 60 } }`；`channels` 可省略，旧的两键产物仍有效；新产物写全三键。
+- `gaps` 如实记录抓取异常、字段缺失、30 天剔除数、新仓库与近 7 天新建通道候选数、未纳入候选数量与 star_history 调用次数；两条时间通道的候选数各自成行（`新仓库通道贡献 N 条候选`、`近 7 天新建通道贡献 N 条候选`），并说明刷星未做自动判定。
 
 ### analyze.json（分析子代理产物）
 
@@ -299,7 +299,7 @@
 }
 ```
 
-- `rank` 为 `1..N` 连续整数，顺序与 `stars_today` 降序一致。
+- `rank` 为 `1..N` 连续整数，顺序为分层排序：新爆款在前、层内按 `stars_today` 降序，全零时层内按 `stars_total` 降序。
 - 条目数 10–15（不足 10 按实际并在 `gaps` 说明）；`dropped_by_organize` = analyze 条目数 − organize 条目数，通常为 35–40。
 - `core` ≤100 个汉字（不计英文单词与数字）；`why` 独立一句。
 - `overview.themes` 只含当日命中的分组（0 命中省略）；整理阶段把自由标签合并为不超过 6 组，`name` 为标签或合并后的组名。
@@ -437,7 +437,7 @@
 
 ## GitHub 趋势
 
-### {rank}. {full_name}
+### {rank}. {🆕 }{full_name}
 
 - 标签：[{theme1}] [{theme2}]
 - Star：{stars_total}（今日 +{stars_today}）· 评分：{score.total} / {score.grade}
@@ -448,6 +448,7 @@
 ```
 
 - `overview.themes` 按 organize 中的顺序逐条输出；条目的 `themes` 为空数组时输出 `[其他]`。
+- 新爆款（由 `created_at`、`stars_total` 与数据归属日推导）标题为 `### {rank}. 🆕 {full_name}`；非新爆款标题保持 `### {rank}. {full_name}`，不出现 `🆕`。概览不新增“新爆款”分组。
 - Star 总数用千分位；`stars_today`（数据归属日增量）照抄数值（含 0，不加千分位、不四舍五入）。
 - 逐条评分只采用 `score.json.items[]` 中 `rank` 与 `full_name` 同时匹配的条目；某条匹配不到（缺项、名次或全名不符）时，该条只省略「· 评分：总分 / 等级」，Star 照常输出，其余条目与标题行不受影响。
 - 标题下均分行仅在 `score.json` 存在、可解析、`valid=true` 且 `summary.average`、`summary.grades` 齐全时输出；均分照抄 `summary.average`，A/B/C 取 `summary.grades`。
@@ -516,8 +517,8 @@
 
 ### 被测模块
 
-- 采集脚本：无凭证守门（且不发请求）、star 历史解析、响应中断重试、`--date` 落盘与 `collected_at` 格式、按数据归属日新增 star 降序、30 天过滤与 `stats` 计数、多 star 区间与新仓库通道查询去重、每区间翻页、通道轮转、50 条上限、候选不足时写入 `gaps`、上一自然日 `collect.json` 的本地差分、`star_history` 150 次上限。
-- 校验脚本：三份契约的正反例（未知字段、类型错误、date 与目录不一致、rank 不连续、计数不一致、repeat 历史不存在、`themes` 元素类型非法）；30 天窗口内条目硬拒（不论是否有 `repeat`）、30 天外 `repeat.last_seen` 必须等于最近发布日期、`repeat` 不再接受 `new_progress`、日报 10–15 条边界、旧 `collect.json` 无 `stats` 仍通过、`stats` 跨文件透传一致；自由标签与非固定主题被接受，空 `themes` 可接受；`--all` 跳过只有 tokens.json 的日期目录。
+- 采集脚本：无凭证守门（且不发请求）、star 历史解析、响应中断重试、`--date` 落盘与 `collected_at` 格式、分层排序（新爆款在前、层内按新增 star 降序、全零退化）、30 天过滤与 `stats` 计数、多 star 区间与两条时间通道查询去重、每区间翻页、三通道轮转、50 条上限、候选不足时写入 `gaps`、上一自然日 `collect.json` 的本地差分、`star_history` 150 次上限。
+- 校验脚本：三份契约的正反例（未知字段、类型错误、date 与目录不一致、rank 不连续、计数不一致、repeat 历史不存在、`themes` 元素类型非法）；30 天窗口内条目硬拒（不论是否有 `repeat`）、30 天外 `repeat.last_seen` 必须等于最近发布日期、`repeat` 不再接受 `new_progress`、日报 10–15 条边界、旧 `collect.json` 无 `stats` 仍通过、`stats` 跨文件透传一致；分层硬校验拒绝“老项目早于新爆款”与层内非降序，`created_at == 发布日 - 8 天` 的边界条目接受任一分层；三键与旧两键通道统计都自洽；自由标签与非固定主题被接受，空 `themes` 可接受；`--all` 跳过只有 tokens.json 的日期目录。
 - 评分脚本：五维得分、A/B/C 阈值、`pass` 判定、`attempts[]` 追加、校验失败时跳过分、标签个数分档（0 / 1 / 2–4 / ≥5）。
 - 不测：插件内部排版、子代理提示词与文笔、GitHub 真实网络、GitHub Actions runner。
 
@@ -541,7 +542,7 @@
   - `uv run python scripts/score.py --date YYYY-MM-DD`：输出评分卡与 `score.json`。
 - 每次产出后可抽查的验收点：
   - 结构完整：日期标题、质量评分摘要、今日概览（一句总述 + 分组要点）、GitHub 趋势齐全；条目格式符合模板。
-  - 数量与排序：GitHub 趋势 10–15 条（或 gaps 说明不足）、按 `stars_today` 降序、`rank` 连续。
+  - 数量与排序：GitHub 趋势 10–15 条（或 gaps 说明不足）、按分层排序（新爆款在前、层内按 `stars_today` 降序，全零时层内按 `stars_total` 降序）、`rank` 连续；新爆款标题带 `🆕` 且非新爆款无标记。
   - 候选与入榜：`collect.json` 50 条（或 gaps 说明不足）、`stats.candidates - stats.dropped_recent_duplicates = stats.eligible`、`eligible >= github 条数`。
   - 标签自由：条目标签不再限定固定主题；每条建议 2–4 个；未打标签的渲染为 `[其他]`；概览分组不超过 6 组。
   - 展示齐全：每条含总 star（千分位）、数据归属日新增 star 与评分/等级；标题下含均分与 A/B/C 分布；逐条评分按 `rank` 与 `full_name` 同时匹配，单条缺失只省略该条评分，整份评分不可用才连标题行一起省略。
@@ -582,6 +583,6 @@
 - 定时任务的发布日通过 `KNOWLEDGE_DATE`、数据归属日通过 `KNOWLEDGE_GAIN_DATE` 贯穿工作流、采集脚本与 token 插件；手动触发也注入这两个变量，但值都取当天；本地运行不设置这两个变量，两者都取本地今天。
 - 本地推送使用 `~/.ssh/git`；CI 使用自带 `GITHUB_TOKEN`，不需要 Personal Access Token。
 - 本 spec 落在 local markdown tracker：`.scratch/knowledge-daily/spec.md`；tracker 配置见 `docs/agents/issue-tracker.md`。
-- 术语见根目录 `GLOSSARY.md`（候选集 / 入榜集 / 定稿集 / 重复窗口）；严格去重与扩容候选池的取舍见 `docs/adr/0005-严格去重与扩容候选池.md`。
+- 术语见根目录 `GLOSSARY.md`（候选集 / 入榜集 / 定稿集 / 重复窗口 / 新爆款）；严格去重与扩容候选池的取舍见 `docs/adr/0005-严格去重与扩容候选池.md`。
 - 采集凭证的获取与配置步骤见 `AGENTS.md`「凭证」，模板见 `.env.example`。
 - Python 依赖由 `uv` 管理（`pyproject.toml` + `uv.lock`），运行入口统一为 `uv run python …`。

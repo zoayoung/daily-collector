@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -118,10 +119,56 @@ def _check_duplicate_window(
         errors.append(f"{where} repeat.last_seen={last_seen} 应等于最近发布日期 {latest}")
 
 
-def _check_order(items: list[dict], errors: list[str], where: str) -> None:
+NEW_BURST_WINDOW_DAYS = 7
+NEW_BURST_MIN_STARS = 100
+
+
+def _check_order(items: list[dict], day: str | None, errors: list[str], where: str) -> None:
+    """分层硬校验：新爆款恒在老项目之前，层内按 stars_today（全零时 stars_total）降序。
+
+    产物只携带发布日，分层基准是数据归属日；对 created_at 恰为「发布日 - 8 天」的条目
+    接受任一分层，避免本地（基准=发布日）与 CI（基准=发布日前一天）互相误杀。
+    """
     values = [item.get("stars_today") for item in items]
-    if all(isinstance(value, int) for value in values) and values != sorted(values, reverse=True):
-        errors.append(f"{where} 未按 stars_today 降序排列")
+    if not all(isinstance(value, int) for value in values):
+        return
+    all_zero = all(value == 0 for value in values)
+    boundary = None
+    cutoff = None
+    if day and is_date(day):
+        boundary = (date.fromisoformat(day) - timedelta(days=8)).isoformat()
+        cutoff = (
+            date.fromisoformat(day) - timedelta(days=NEW_BURST_WINDOW_DAYS)
+        ).isoformat()
+
+    def layer(item: dict) -> int:
+        if cutoff is None:
+            return 1
+        created = item.get("created_at") or ""
+        total = item.get("stars_total")
+        if created >= cutoff and isinstance(total, int) and total >= NEW_BURST_MIN_STARS:
+            return 0
+        return 1
+
+    strict = [
+        (index, layer(item))
+        for index, item in enumerate(items)
+        if boundary is None or (item.get("created_at") or "") != boundary
+    ]
+    new_positions = [index for index, value in strict if value == 0]
+    old_positions = [index for index, value in strict if value == 1]
+    if new_positions and old_positions and max(new_positions) > min(old_positions):
+        errors.append(f"{where} 老项目出现在新爆款之前")
+
+    metric_name = "stars_total" if all_zero else "stars_today"
+    for target, label in ((0, "新爆款层"), (1, "老项目层")):
+        group = [items[index] for index, value in strict if value == target]
+        metrics = [
+            (item.get("stars_total") or 0) if all_zero else item.get("stars_today")
+            for item in group
+        ]
+        if metrics != sorted(metrics, reverse=True):
+            errors.append(f"{where} {label}未按 {metric_name} 降序排列")
 
 
 def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[str], list[str]]:
@@ -169,7 +216,7 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
             warnings.append(
                 f"入榜不足 {rules['collect_min_items']} 条（实际 {len(items)} 条），gaps 中应说明原因"
             )
-        _check_order(items, errors, "github")
+        _check_order(items, day, errors, "github")
         stats = data.get("stats")
         if stats is not None:
             _unknown(stats, stats_keys, "stats", errors)
@@ -190,7 +237,9 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
                 channel_keys = _keys(
                     schema["properties"]["stats"]["properties"]["channels"], contracts
                 )
-                total = sum(channels[key] for key in channel_keys)
+                total = sum(
+                    value for key, value in channels.items() if key in channel_keys
+                )
                 if total != candidates:
                     errors.append(
                         f"stats.channels 合计 {total} 与 stats.candidates={candidates} 不一致"
@@ -201,7 +250,7 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
         _unknown(stats, stats_keys, "stats", errors)
         if stats.get("github_count") != len(items):
             errors.append(f"stats.github_count={stats.get('github_count')} 与条目数 {len(items)} 不一致")
-        _check_order(items, errors, "github")
+        _check_order(items, day, errors, "github")
 
     if stage == "analyze":
         stats = data.get("stats") or {}
