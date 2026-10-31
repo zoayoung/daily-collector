@@ -110,6 +110,24 @@ def load_baselines(day: str) -> dict[str, tuple[str, int]]:
     return baselines
 
 
+def topics_of(item: dict) -> list[str]:
+    """清洗 GitHub topics：丢弃非字符串与空白元素、去重并保持原顺序。"""
+    raw = item.get("topics")
+    if not isinstance(raw, list):
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in raw:
+        if not isinstance(value, str):
+            continue
+        value = value.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
 def candidate(item: dict) -> dict:
     return {
         "full_name": item.get("full_name"),
@@ -122,6 +140,7 @@ def candidate(item: dict) -> dict:
         "forks": item.get("forks_count"),
         "created_at": (item.get("created_at") or "")[:10],
         "pushed_at": (item.get("pushed_at") or "")[:10],
+        "topics": topics_of(item),
     }
 
 
