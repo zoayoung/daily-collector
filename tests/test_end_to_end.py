@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 from tests.support import (
+    NEW_7D_CHANNEL,
     NEW_REPOS_CHANNEL,
     FixtureServer,
     render_report,
@@ -25,6 +26,7 @@ WINDOW_HISTORY_DAY = "2026-10-10"
 OLD_HISTORY_DAY = "2026-08-01"
 WINDOW_REPO = "window/repo"
 OLD_REPO = "legacy/repo"
+NEW_BURST_REPO = "fresh/burst"
 RANGES = ("100..500", "500..2000", "2000..10000", ">10000")
 CORE = (
     "该项目提供向量检索与推理调度能力，支持多模态输入与 RAG 工作流，"
@@ -33,7 +35,7 @@ CORE = (
 WHY = "适合对照其调度实现，建议关注后续版本的并发与延迟优化。"
 
 
-def search_item(full_name: str, stars: int) -> dict:
+def search_item(full_name: str, stars: int, created_at: str = "2020-01-01T00:00:00Z") -> dict:
     return {
         "full_name": full_name,
         "html_url": f"https://github.com/{full_name}",
@@ -41,16 +43,17 @@ def search_item(full_name: str, stars: int) -> dict:
         "language": "Go",
         "stargazers_count": stars,
         "forks_count": 10,
-        "created_at": "2020-01-01T00:00:00Z",
+        "created_at": created_at,
         "pushed_at": f"{DAY}T00:00:00Z",
     }
 
 
 def candidate_pages() -> dict[tuple[str, int], object]:
-    """51 个候选：50 个可入榜 + 1 个 30 天窗口内项目。"""
+    """52 个候选：51 个可入榜（含 1 个新爆款）+ 1 个 30 天窗口内项目。"""
     pages: dict[tuple[str, int], object] = {(star_range, 1): [] for star_range in RANGES}
     items = [search_item(OLD_REPO, 1_900)]
     items.extend(search_item(f"owner/repo{index:02d}", 1_800 - index) for index in range(49))
+    items.append(search_item(NEW_BURST_REPO, 400, created_at="2026-10-19T00:00:00Z"))
     items.append(search_item(WINDOW_REPO, 1_700))
     pages[("100..500", 1)] = items
     return pages
@@ -108,7 +111,7 @@ def organize_document(analyzed: dict, final_count: int) -> dict:
 
 
 def report_entries(markdown: str) -> list[str]:
-    return re.findall(r"^###\s+\d+\.\s+(\S+)\s*$", markdown, flags=re.MULTILINE)
+    return re.findall(r"^###\s+\d+\.\s+(?:🆕\s+)?(\S+)\s*$", markdown, flags=re.MULTILINE)
 
 
 def collect_without_stats(name: str = "owner/old") -> dict:
@@ -171,17 +174,23 @@ class EndToEndTest(unittest.TestCase):
                 for path in server.requests
                 if path.startswith("/search/repositories")
             }
-            self.assertEqual(searched, set(RANGES) | {NEW_REPOS_CHANNEL})
+            self.assertEqual(
+                searched, set(RANGES) | {NEW_REPOS_CHANNEL, NEW_7D_CHANNEL}
+            )
         self.assertEqual(collected.returncode, 0, collected.stdout + collected.stderr)
 
         collect = json.loads((self.work / DAY / "collect.json").read_text(encoding="utf-8"))
         stats = collect["stats"]
         self.assertEqual(len(collect["github"]), 50)
         self.assertEqual(stats["candidates"] - stats["dropped_recent_duplicates"], stats["eligible"])
-        self.assertEqual(stats["candidates"], 51)
-        self.assertEqual(stats["eligible"], 50)
+        self.assertEqual(stats["candidates"], 52)
+        self.assertEqual(stats["eligible"], 51)
         self.assertEqual(stats["dropped_recent_duplicates"], 1)
+        self.assertEqual(
+            sum(stats["channels"].values()), stats["candidates"]
+        )
         self.assertNotIn(WINDOW_REPO, [item["full_name"] for item in collect["github"]])
+        self.assertEqual(collect["github"][0]["full_name"], NEW_BURST_REPO)
 
         analyzed = analyze_document(collect)
         analyze_path = self.write("analyze.json", analyzed)
@@ -209,6 +218,8 @@ class EndToEndTest(unittest.TestCase):
         self.assertNotIn(WINDOW_REPO, entries)
         self.assertNotIn("新进展", report)
         self.assertIn(f"🔁 重复：上次 {OLD_HISTORY_DAY}", report)
+        self.assertIn(f"### 1. 🆕 {NEW_BURST_REPO}", report)
+        self.assertEqual(report.count("🆕"), 1)
         self.assertGreaterEqual(stats["eligible"], len(collect["github"]))
         self.assertGreaterEqual(len(collect["github"]), len(organized["github"]))
         self.assertGreaterEqual(len(organized["github"]), len(entries))

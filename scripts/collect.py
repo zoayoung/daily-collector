@@ -36,11 +36,13 @@ from _common import (
 
 API = (os.environ.get("KNOWLEDGE_GITHUB_API") or "https://api.github.com").rstrip("/")
 STAR_RANGES = ("100..500", "500..2000", "2000..10000", ">10000")
-CHANNEL_LABELS = {"star_bands": "区间", "new_repos": "新仓库"}
+CHANNEL_LABELS = {"star_bands": "区间", "new_repos": "新仓库", "new_7d": "近 7 天新建"}
 CHANNELS = tuple(CHANNEL_LABELS)
-STAR_BANDS_CHANNEL, NEW_REPOS_CHANNEL = CHANNELS
+STAR_BANDS_CHANNEL, NEW_REPOS_CHANNEL, NEW_7D_CHANNEL = CHANNELS
 NEW_REPOS_MIN_STARS = 50
 NEW_REPOS_WINDOW_DAYS = 30
+NEW_BURST_MIN_STARS = 100
+NEW_BURST_WINDOW_DAYS = 7
 MAX_PAGES = 2
 PER_PAGE = 100
 MAX_HISTORY_CALLS = 150
@@ -123,6 +125,14 @@ def candidate(item: dict) -> dict:
     }
 
 
+def is_new_burst(repo: dict, gain_day: str) -> bool:
+    """新爆款：数据归属日前 7 天创建且累计 star ≥100，由现有字段推导。"""
+    created = repo.get("created_at") or ""
+    total = repo.get("stars_total")
+    cutoff = (date.fromisoformat(gain_day) - timedelta(days=NEW_BURST_WINDOW_DAYS)).isoformat()
+    return created >= cutoff and isinstance(total, int) and total >= NEW_BURST_MIN_STARS
+
+
 def search_page(query: str, page: int) -> list[dict]:
     params = urllib.parse.urlencode(
         {
@@ -137,7 +147,7 @@ def search_page(query: str, page: int) -> list[dict]:
     return payload.get("items", [])
 
 
-def search_candidates(day: str, gaps: list[str]) -> list[tuple[str, dict]]:
+def search_candidates(day: str, gain_day: str, gaps: list[str]) -> list[tuple[str, dict]]:
     cutoff = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
     collected: list[tuple[str, dict]] = []
     for star_range in STAR_RANGES:
@@ -161,6 +171,18 @@ def search_candidates(day: str, gaps: list[str]) -> list[tuple[str, dict]]:
             gaps.append(f"搜索新仓库通道第 {page} 页失败：{error}")
             break
         collected.extend((NEW_REPOS_CHANNEL, candidate(item)) for item in items)
+        if len(items) < PER_PAGE:
+            break
+
+    fresh_cutoff = (date.fromisoformat(gain_day) - timedelta(days=NEW_BURST_WINDOW_DAYS)).isoformat()
+    query = f"created:>={fresh_cutoff} stars:>={NEW_BURST_MIN_STARS}"
+    for page in range(1, MAX_PAGES + 1):
+        try:
+            items = search_page(query, page)
+        except RuntimeError as error:
+            gaps.append(f"搜索近 7 天新建通道第 {page} 页失败：{error}")
+            break
+        collected.extend((NEW_7D_CHANNEL, candidate(item)) for item in items)
         if len(items) < PER_PAGE:
             break
 
@@ -205,7 +227,7 @@ def build(day: str, gain_day: str) -> dict:
     baselines = load_baselines(day)
     yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
 
-    candidates = search_candidates(day, gaps)
+    candidates = search_candidates(day, gain_day, gaps)
     if not candidates:
         raise RuntimeError("搜索 API 未返回任何候选")
 
@@ -275,10 +297,13 @@ def build(day: str, gain_day: str) -> dict:
 
     with_gain = [repo for _, repo in eligible if repo["stars_today"] is not None]
     all_zero_gain = not any(repo["stars_today"] for repo in with_gain)
-    if all_zero_gain:
-        ranked = sorted(with_gain, key=lambda repo: repo["stars_total"] or 0, reverse=True)
-    else:
-        ranked = sorted(with_gain, key=lambda repo: repo["stars_today"], reverse=True)
+
+    def rank_key(repo: dict) -> tuple[int, int]:
+        layer = 0 if is_new_burst(repo, gain_day) else 1
+        within = (repo["stars_total"] or 0) if all_zero_gain else repo["stars_today"]
+        return layer, -within
+
+    ranked = sorted(with_gain, key=rank_key)
     picked = ranked[:PICK_LIMIT]
     if not picked:
         raise RuntimeError(
@@ -299,6 +324,12 @@ def build(day: str, gain_day: str) -> dict:
         f"{CHANNEL_LABELS[NEW_REPOS_CHANNEL]}通道贡献 "
         f"{channels[NEW_REPOS_CHANNEL]} 条候选",
     )
+    gaps.insert(
+        2,
+        f"{CHANNEL_LABELS[NEW_7D_CHANNEL]}通道贡献 "
+        f"{channels[NEW_7D_CHANNEL]} 条候选",
+    )
+    gaps.append("刷星未做自动判定（不引入 star 异常增长过滤）")
     gaps.append(
         f"star_history 调用 {history_calls} 次（上限 {MAX_HISTORY_CALLS}），失败 {history_failed} 次"
     )
@@ -310,7 +341,9 @@ def build(day: str, gain_day: str) -> dict:
     if len(ranked) > len(picked):
         gaps.append(f"未纳入 {len(ranked) - len(picked)} 个候选（排名在 {PICK_LIMIT} 之后）")
     if picked and not any(repo["stars_today"] for repo in picked):
-        gaps.append("数据归属日增量全为 0（数据可能尚未产生），本次按 stars_total 降序排列")
+        gaps.append(
+            "数据归属日增量全为 0（数据可能尚未产生），本次按分层内 stars_total 降序排列"
+        )
     min_items = rules["collect_min_items"]
     if len(picked) < min_items:
         gaps.append(f"入榜不足 {min_items} 条（实际 {len(picked)} 条）")

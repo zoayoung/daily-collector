@@ -30,7 +30,8 @@
           "required": ["star_bands", "new_repos"],
           "properties": {
             "star_bands": { "type": "integer", "minimum": 0 },
-            "new_repos": { "type": "integer", "minimum": 0 }
+            "new_repos": { "type": "integer", "minimum": 0 },
+            "new_7d": { "type": "integer", "minimum": 0 }
           }
         }
       }

@@ -66,7 +66,9 @@ class NewRepoChannelTest(CliCase):
             [1, 2],
         )
         self.assertEqual(data["stats"]["candidates"], 101)
-        self.assertEqual(data["stats"]["channels"], {"star_bands": 0, "new_repos": 101})
+        self.assertEqual(
+            data["stats"]["channels"], {"star_bands": 0, "new_repos": 101, "new_7d": 0}
+        )
 
     def test_new_channel_stops_after_a_short_first_page(self) -> None:
         pages = empty_search_pages()
@@ -92,7 +94,7 @@ class NewRepoChannelTest(CliCase):
             ["Shared/Repo", "new/only"],
         )
         self.assertEqual(
-            data["stats"]["channels"], {"star_bands": 1, "new_repos": 1}
+            data["stats"]["channels"], {"star_bands": 1, "new_repos": 1, "new_7d": 0}
         )
         self.assertEqual(data["stats"]["candidates"], 2)
         self.assertEqual(
@@ -100,7 +102,7 @@ class NewRepoChannelTest(CliCase):
         )
         self.assertTrue(any("候选 2 个" in gap for gap in data["gaps"]), data["gaps"])
         self.assertTrue(
-            any("（区间 1、新仓库 1）" in gap for gap in data["gaps"]),
+            any("（区间 1、新仓库 1、近 7 天新建 0）" in gap for gap in data["gaps"]),
             data["gaps"],
         )
         self.assertTrue(
@@ -122,7 +124,9 @@ class NewRepoChannelTest(CliCase):
         self.assertEqual(data["stats"]["candidates"], 2)
         self.assertEqual(data["stats"]["dropped_recent_duplicates"], 1)
         self.assertEqual(data["stats"]["eligible"], 1)
-        self.assertEqual(data["stats"]["channels"], {"star_bands": 0, "new_repos": 2})
+        self.assertEqual(
+            data["stats"]["channels"], {"star_bands": 0, "new_repos": 2, "new_7d": 0}
+        )
         self.assertTrue(
             any("30 天窗口剔除 1 个" in gap for gap in data["gaps"]), data["gaps"]
         )
@@ -139,9 +143,11 @@ class NewRepoChannelTest(CliCase):
             any("新仓库通道" in gap and "失败" in gap for gap in data["gaps"]),
             data["gaps"],
         )
-        self.assertEqual(data["stats"]["channels"], {"star_bands": 1, "new_repos": 0})
+        self.assertEqual(
+            data["stats"]["channels"], {"star_bands": 1, "new_repos": 0, "new_7d": 0}
+        )
         self.assertTrue(
-            any("（区间 1、新仓库 0）" in gap for gap in data["gaps"]),
+            any("（区间 1、新仓库 0、近 7 天新建 0）" in gap for gap in data["gaps"]),
             data["gaps"],
         )
         self.assertTrue(
