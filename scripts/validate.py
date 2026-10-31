@@ -222,11 +222,12 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
             _unknown(stats, stats_keys, "stats", errors)
             candidates = stats.get("candidates")
             eligible = stats.get("eligible")
+            excluded = stats.get("excluded", 0)
             dropped = stats.get("dropped_recent_duplicates")
-            if candidates - dropped != eligible:
+            if candidates - excluded - dropped != eligible:
                 errors.append(
-                    "stats.candidates - stats.dropped_recent_duplicates="
-                    f"{candidates - dropped} 与 stats.eligible={eligible} 不一致"
+                    "stats.candidates - stats.excluded - stats.dropped_recent_duplicates="
+                    f"{candidates - excluded - dropped} 与 stats.eligible={eligible} 不一致"
                 )
             if eligible < len(items):
                 errors.append(
