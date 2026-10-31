@@ -4,7 +4,7 @@
 
 **Blocked by:** 05、06、07
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 用户故事不再宣称单纯按新增 star 排序，改为分层排序
 - [ ] 「入榜集」写明候选集先经 Awesome/无描述排除，再过滤 30 天窗口，再经 README 门槛，再按分层排序取前 50 条
