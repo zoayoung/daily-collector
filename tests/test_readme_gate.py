@@ -105,6 +105,57 @@ class ReadmeGateCollectTest(CliCase):
         self.assertEqual(len(readme_names(requests)), 50)
         self.assertFalse(any("未做 README 检查" in gap for gap in data["gaps"]))
 
+    def test_all_readmes_missing_yields_empty_lineup(self) -> None:
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [
+            search_item("owner/no-readme-a", 300),
+            search_item("owner/no-readme-b", 200),
+        ]
+
+        data, requests = self.collect(
+            pages,
+            readme_failures={
+                "owner/no-readme-a": 404,
+                "owner/no-readme-b": 404,
+            },
+        )
+
+        self.assertEqual(data["github"], [])
+        self.assertEqual(data["stats"]["readme_dropped"], 2)
+        self.assertEqual(
+            readme_names(requests),
+            ["owner/no-readme-a", "owner/no-readme-b"],
+        )
+        self.assertTrue(
+            any(
+                "入榜 0 个" in gap and "README 缺失剔除 2 个" in gap
+                for gap in data["gaps"]
+            ),
+            data["gaps"],
+        )
+        self.assertFalse(
+            any("没有任何候选通过 README 检查" in gap for gap in data["gaps"]),
+            data["gaps"],
+        )
+
+    def test_fewer_than_ten_items_warns_in_gaps_and_validation(self) -> None:
+        pages = empty_search_pages()
+        pages[("100..500", 1)] = [
+            search_item("owner/first", 300),
+            search_item("owner/second", 200),
+        ]
+
+        data, _ = self.collect(pages)
+
+        self.assertEqual(len(data["github"]), 2)
+        self.assertTrue(
+            any("入榜不足 10 条（实际 2 条）" in gap for gap in data["gaps"]),
+            data["gaps"],
+        )
+        result = self.validate("--file", str(self.work / DAY / "collect.json"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("入榜不足 10 条（实际 2 条）", result.stdout)
+
     def test_budget_stops_after_one_hundred_checks_and_reports_untried(self) -> None:
         names = [f"owner/seq{i:03d}" for i in range(120)]
         pages = empty_search_pages()
@@ -128,6 +179,28 @@ class ReadmeGateCollectTest(CliCase):
 
 
 class ReadmeDroppedValidationTest(CliCase):
+    def test_empty_collect_passes_with_visible_warning(self) -> None:
+        path = self.write_collect(
+            {
+                "date": DAY,
+                "collected_at": f"{DAY} 08:00",
+                "github": [],
+                "stats": {
+                    "candidates": 2,
+                    "eligible": 2,
+                    "dropped_recent_duplicates": 0,
+                    "readme_dropped": 2,
+                    "channels": {"star_bands": 2, "new_repos": 0, "new_7d": 0},
+                },
+                "gaps": ["README 缺失剔除 2 个，入榜 0 个"],
+            }
+        )
+
+        result = self.validate("--file", str(path))
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("入榜不足 10 条（实际 0 条）", result.stdout)
+
     def test_new_collect_with_readme_dropped_passes(self) -> None:
         path = self.write_collect(
             collect_document(
