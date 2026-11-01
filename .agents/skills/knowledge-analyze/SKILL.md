@@ -26,9 +26,9 @@ allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/spec.md), Read(wor
 
 1. **读取**：读 collect.json 与 spec。完成标志：collect.json 可解析，打标签口径已掌握。
 2. **建历史对照**：读 `daily-knowledge/` 下全部 md，得到每个 repo 最近一次发布日期。完成标志：daily-knowledge/ 下每个 md 都已扫过。
-3. **打标签与标注重复**：处理 collect.json 的全部条目，不按重复窗口自行剔除。按项目内容为每条自由分配 `themes`（非空标签数组，数量口径见 spec『实现决策 · 标签口径』；完全无法归类时用空数组表示「未打标签」）。仅当项目在重复窗口外再次出现时写 `repeat.last_seen`，值等于历史中最近一次发布日期；无历史或窗口内记录不作为 `repeat` 依据；`repeat` 只含 `last_seen`。完成标志：全部条目都有 `themes`，每个 `repeat` 要么为 null、要么带与历史一致的 `last_seen`。
+3. **打标签与标注重复**：处理 collect.json 的全部条目，不按重复窗口自行剔除。按项目内容为每条自由分配 `themes`（非空标签数组，数量口径见 spec「实现决策」中「标签口径」条；完全无法归类时用空数组表示「未打标签」）。仅当项目在重复窗口外再次出现时写 `repeat.last_seen`，值等于历史中最近一次发布日期；无历史或窗口内记录不作为 `repeat` 依据；`repeat` 只含 `last_seen`。完成标志：全部条目都有 `themes`，每个 `repeat` 要么为 null、要么带与历史一致的 `last_seen`。
 4. **写分析要点**：逐条写 `core`（项目做了什么、关键事实与理由）与 `why`（一句评价，附是否跟进/怎么用的建议）。素材补足：仓库描述过短或不明时才抓 README，且只读约定范围；素材补抓总量受 spec 限制，失败用已有字段概括并记 `gaps`。完成标志：每条都有言之有物的 core 与 why。
-5. **组装概览之外的部分**：组装 `stats`、`gaps`。`stats.dropped_recent_duplicates` 沿用 collect.json 的统计，collect 无 `stats` 时按 spec『统计透传』处理。不写 `rank`、不写 `overview`、不做选取——这些属于整理阶段。
+5. **组装概览之外的部分**：组装 `stats`、`gaps`。`stats.dropped_recent_duplicates` 沿用 collect.json 的统计，collect 无 `stats` 时按 spec「实现决策」中「统计透传」条处理。不写 `rank`、不写 `overview`、不做选取——这些属于整理阶段。
 6. **组装落盘**：按「输出契约」自检后写 `work/YYYY-MM-DD/analyze.json`；按模板回复。
 
 **打回模式**：读现有 `analyze.json`，只替换清单中条目的 `core` 与 `why`（必要时补抓素材），其余条目、`themes`、`repeat`、`stats` 保持不变；不新增或删除条目。写完同样按输出契约自检。
@@ -38,7 +38,7 @@ allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/spec.md), Read(wor
 产物 `work/YYYY-MM-DD/analyze.json`（UTF-8），字段以 spec「analyze.json」节与 `schemas/analyze.schema.json` 为准，其中：
 
 - `date` 为委派日期。
-- `github`：collect 全部条目与字段（含 `topics`，原样保留）+ `themes`（数组）+ `repeat` + `core` + `why`；条数与 collect 条目一致，沿用 collect 的分层顺序（见 spec『实现决策 · 排序与选取』）。
+- `github`：形状见 `schemas/analyze.schema.json`；条数与 collect 条目一致，沿用 collect 的分层顺序（见 spec「实现决策」中「排序与选取」条），`topics` 原样透传。
 - `repeat`：仅为重复窗口外再次出现的项目写 `{"last_seen": "YYYY-MM-DD"}`，只含 `last_seen`。
 - `stats`：`{ github_count, dropped_recent_duplicates }`，`github_count` 等于 `github` 条数，`dropped_recent_duplicates` 沿用 collect.json。
 - `gaps` 如实记录素材抓取失败等异常。
