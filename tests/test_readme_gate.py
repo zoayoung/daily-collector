@@ -133,10 +133,13 @@ class ReadmeGateCollectTest(CliCase):
             ),
             data["gaps"],
         )
-        self.assertFalse(
-            any("没有任何候选通过 README 检查" in gap for gap in data["gaps"]),
-            data["gaps"],
-        )
+        self.assertIn("所有候选均无 README，本次入榜 0 条", data["gaps"])
+        reason = [
+            gap
+            for gap in data["gaps"]
+            if "README" in gap and "入榜 0" in gap and "缺失剔除" not in gap
+        ]
+        self.assertEqual(reason, ["所有候选均无 README，本次入榜 0 条"])
 
     def test_fewer_than_ten_items_warns_in_gaps_and_validation(self) -> None:
         pages = empty_search_pages()

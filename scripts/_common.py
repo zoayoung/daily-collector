@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import tempfile
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -25,8 +26,6 @@ TIMEZONE = timezone(timedelta(hours=8))
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 HEADING_RE = re.compile(r"^###\s+\d+\.\s+(?:🆕\s+)?(\S+/\S+)\s*$")
-
-NEW_BURST_MIN_STARS = 100
 
 STATS_CANDIDATES = "candidates"
 STATS_EXCLUDED = "excluded"
@@ -124,6 +123,7 @@ VALIDATION_RULE_KEYS = (
     "report_max_items",
     "core_max_cjk",
     "new_burst_window_days",
+    "new_burst_min_stars",
 )
 
 
@@ -147,37 +147,29 @@ def window_start(day: str, window_days: int) -> str:
     return (date.fromisoformat(day) - timedelta(days=window_days)).isoformat()
 
 
-def new_burst_window_days() -> int:
-    """新爆款窗口天数：唯一来源是 validation-rules.json 的 new_burst_window_days。"""
-    return int(load_validation_rules()["new_burst_window_days"])
+def new_burst_cutoff(day: str, window_days: int) -> str:
+    """新爆款截止日：day 前 window_days 天；采集查询与分层判定共用这一处计算。"""
+    return window_start(day, window_days)
 
 
-def new_burst_cutoff(day: str, window_days: int | None = None) -> str:
-    """新爆款截止日：day 前 window_days 天，采集第三通道查询与分层判定共用。"""
-    days = new_burst_window_days() if window_days is None else window_days
-    return window_start(day, days)
+@dataclass(frozen=True)
+class NewBurstRule:
+    """新爆款口径：窗口天数与 star 门槛，均来自 validation-rules.json。"""
 
+    window_days: int
+    min_stars: int
 
-def new_burst_validation_boundary(day: str, window_days: int | None = None) -> str:
-    """校验分层边界：发布日前「窗口 + 1」天，覆盖数据归属日与发布日两种基准。"""
-    days = new_burst_window_days() if window_days is None else window_days
-    return window_start(day, days + 1)
+    def cutoff(self, day: str) -> str:
+        return new_burst_cutoff(day, self.window_days)
 
-
-def is_new_burst(
-    created_at: object,
-    stars_total: object,
-    gain_day: str,
-    window_days: int | None = None,
-) -> bool:
-    """新爆款：创建日期不早于数据归属日前 window_days 天，且累计 star ≥100。"""
-    created = created_at if isinstance(created_at, str) else ""
-    cutoff = new_burst_cutoff(gain_day, window_days)
-    return (
-        created[:10] >= cutoff
-        and isinstance(stars_total, int)
-        and stars_total >= NEW_BURST_MIN_STARS
-    )
+    def matches(self, created_at: object, stars_total: object, gain_day: str) -> bool:
+        """创建日期不早于数据归属日前的窗口起点，且累计 star 达到门槛。"""
+        created = created_at if isinstance(created_at, str) else ""
+        return (
+            created[:10] >= self.cutoff(gain_day)
+            and isinstance(stars_total, int)
+            and stars_total >= self.min_stars
+        )
 
 
 def published_history(day: str) -> dict[str, list[str]]:

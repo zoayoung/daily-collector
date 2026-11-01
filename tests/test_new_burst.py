@@ -12,9 +12,11 @@ from datetime import date, timedelta
 
 from tests.support import (
     NEW_7D_CHANNEL,
+    NEW_BURST_WINDOW_DAYS,
     NEW_REPOS_CHANNEL,
     CliCase,
     collect_document,
+    collect_item,
     empty_search_pages,
     render_report,
     search_item,
@@ -24,7 +26,9 @@ from tests.support import (
 DAY = "2026-10-21"
 GAIN = "2026-10-20"
 NEW_7D_CUTOFF = "2026-10-14"
-BOUNDARY = (date.fromisoformat(DAY) - timedelta(days=8)).isoformat()
+BOUNDARY = (
+    date.fromisoformat(DAY) - timedelta(days=NEW_BURST_WINDOW_DAYS + 1)
+).isoformat()
 
 
 def query_of(path: str) -> dict[str, list[str]]:
@@ -37,26 +41,6 @@ def channel_requests(requests: list[str], channel: str) -> list[str]:
         for path in requests
         if path.startswith("/search/repositories") and search_request(path)[0] == channel
     ]
-
-
-def collect_item(
-    name: str,
-    created_at: str,
-    stars_total: int,
-    stars_today: int,
-) -> dict:
-    return {
-        "full_name": name,
-        "url": f"https://github.com/{name}",
-        "description": "示例项目",
-        "language": "Go",
-        "stars_total": stars_total,
-        "stars_today": stars_today,
-        "stars_today_source": "star_history",
-        "forks": 10,
-        "created_at": created_at,
-        "pushed_at": DAY,
-    }
 
 
 def analyzed_item(item: dict) -> dict:

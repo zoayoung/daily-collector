@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -25,11 +26,11 @@ from _common import (
     STATS_EXCLUDED,
     STATS_GITHUB_COUNT,
     WORK_DIR,
+    NewBurstRule,
     cjk_count,
     is_date,
-    is_new_burst,
     load_validation_rules,
-    new_burst_validation_boundary,
+    new_burst_cutoff,
     published_history,
     read_json,
     today,
@@ -130,14 +131,15 @@ def _check_duplicate_window(
 def _check_order(
     items: list[dict],
     day: str | None,
-    window_days: int,
+    rule: NewBurstRule,
     errors: list[str],
     where: str,
 ) -> None:
     """分层硬校验：新爆款恒在老项目之前，层内按 stars_today（全零时 stars_total）降序。
 
-    产物只携带发布日，分层基准是数据归属日；对 created_at 恰为「发布日 - 窗口 - 1 天」的条目
-    接受任一分层，避免本地（基准=发布日）与 CI（基准=发布日前一天）互相误杀。
+    产物只携带发布日，分层基准是数据归属日；把「发布日 - 1 天」当作推定数据归属日，
+    再用同一个截止日函数算出边界。created_at 恰在这一天的条目接受任一分层，避免本地
+    （基准=发布日）与 CI（基准=发布日前一天）互相误杀。
     """
     values = [item.get("stars_today") for item in items]
     if not all(isinstance(value, int) for value in values):
@@ -145,12 +147,13 @@ def _check_order(
     all_zero = all(value == 0 for value in values)
     boundary = None
     if day and is_date(day):
-        boundary = new_burst_validation_boundary(day, window_days)
+        inferred_gain_day = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
+        boundary = new_burst_cutoff(inferred_gain_day, rule.window_days)
 
     def layer(item: dict) -> int:
         if day is None or not is_date(day):
             return 1
-        if is_new_burst(item.get("created_at"), item.get("stars_total"), day, window_days):
+        if rule.matches(item.get("created_at"), item.get("stars_total"), day):
             return 0
         return 1
 
@@ -179,6 +182,7 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
     errors: list[str] = []
     warnings: list[str] = []
     rules = load_validation_rules()
+    burst_rule = NewBurstRule(rules["new_burst_window_days"], rules["new_burst_min_stars"])
 
     schema = read_json(SCHEMA_DIR / STAGE_SCHEMAS[stage])
     contracts = _contracts()
@@ -220,7 +224,7 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
             warnings.append(
                 f"入榜不足 {rules['collect_min_items']} 条（实际 {len(items)} 条），gaps 中应说明原因"
             )
-        _check_order(items, day, rules["new_burst_window_days"], errors, "github")
+        _check_order(items, day, burst_rule, errors, "github")
         stats = data.get("stats")
         if stats is not None:
             _unknown(stats, stats_keys, "stats", errors)
@@ -262,7 +266,7 @@ def validate_document(data: dict, stage: str, path: Path | None) -> tuple[list[s
                 f"stats.{STATS_GITHUB_COUNT}={stats.get(STATS_GITHUB_COUNT)} "
                 f"与条目数 {len(items)} 不一致"
             )
-        _check_order(items, day, rules["new_burst_window_days"], errors, "github")
+        _check_order(items, day, burst_rule, errors, "github")
 
     if stage == "analyze":
         stats = data.get("stats") or {}

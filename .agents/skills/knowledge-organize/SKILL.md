@@ -36,8 +36,8 @@ allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/spec.md), Read(wor
 - `date` 为委派日期。
 - `github`：形状见 `schemas/organize.schema.json`；保留 analyze 全部字段（`topics` 原样透传），`rank` 连续，顺序按 spec「实现决策」中「排序与选取」条的分层排序；定稿条数见 spec「organize.json（整理子代理产出）」节。
 - `core` 遵守 spec 的字数上限；`why` 为一句话评价与建议。
-- `overview`：`lead` 一句 + `themes[]`（`{name, note}`，只含当日命中的分组，口径见 spec「实现决策」中「概览口径」条；`name` 可为标签或合并后的组名）。
-- `stats`：`{ github_count, dropped_recent_duplicates, dropped_by_organize }`；`github_count` 等于条数，`dropped_recent_duplicates` 沿用 analyze.json。
+- `overview`：一句总述 + 按标签分组的分组要点，只含当日命中的分组（口径见 spec「实现决策」中「概览口径」条）；形状见 `schemas/organize.schema.json`。
+- `stats`：`github_count` 等于条数，`dropped_recent_duplicates` 沿用 analyze.json，`dropped_by_organize` 记录整理阶段剔除数；形状见 `schemas/organize.schema.json`。
 - `gaps`：按批次记录整理阶段的剔除理由，并记录素材问题。
 
 写文件前自检：JSON 可解析；字段不越界；未写 `work/` 之外任何路径。
