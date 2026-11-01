@@ -24,7 +24,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _common import (
-    NEW_BURST_MIN_STARS,
     STATS_CANDIDATES,
     STATS_CHANNELS,
     STATS_DROPPED_RECENT_DUPLICATES,
@@ -32,10 +31,9 @@ from _common import (
     STATS_EXCLUDED,
     STATS_README_DROPPED,
     WORK_DIR,
+    NewBurstRule,
     is_date,
-    is_new_burst,
     load_validation_rules,
-    new_burst_cutoff,
     read_json,
     recent_duplicates,
     stamp,
@@ -179,7 +177,7 @@ def search_page(query: str, page: int) -> list[dict]:
 
 
 def search_candidates(
-    day: str, gain_day: str, burst_window_days: int, gaps: list[str]
+    day: str, gain_day: str, burst_rule: NewBurstRule, gaps: list[str]
 ) -> list[tuple[str, dict]]:
     cutoff = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
     collected: list[tuple[str, dict]] = []
@@ -207,8 +205,8 @@ def search_candidates(
         if len(items) < PER_PAGE:
             break
 
-    fresh_cutoff = new_burst_cutoff(gain_day, burst_window_days)
-    query = f"created:>={fresh_cutoff} stars:>={NEW_BURST_MIN_STARS}"
+    fresh_cutoff = burst_rule.cutoff(gain_day)
+    query = f"created:>={fresh_cutoff} stars:>={burst_rule.min_stars}"
     for page in range(1, MAX_PAGES + 1):
         try:
             items = search_page(query, page)
@@ -269,11 +267,11 @@ def build(day: str, gain_day: str) -> dict:
     gaps: list[str] = []
     rules = load_validation_rules()
     window_days = rules["dedupe_window_days"]
-    burst_window_days = rules["new_burst_window_days"]
+    burst_rule = NewBurstRule(rules["new_burst_window_days"], rules["new_burst_min_stars"])
     baselines = load_baselines(day)
     yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
 
-    candidates = search_candidates(day, gain_day, burst_window_days, gaps)
+    candidates = search_candidates(day, gain_day, burst_rule, gaps)
     if not candidates:
         raise RuntimeError("搜索 API 未返回任何候选")
 
@@ -352,11 +350,10 @@ def build(day: str, gain_day: str) -> dict:
     def rank_key(repo: dict) -> tuple[int, int, int]:
         layer = (
             0
-            if is_new_burst(
+            if burst_rule.matches(
                 repo.get("created_at"),
                 repo.get("stars_total"),
                 gain_day,
-                burst_window_days,
             )
             else 1
         )
@@ -410,10 +407,7 @@ def build(day: str, gain_day: str) -> dict:
         f"{channels[NEW_7D_CHANNEL]} 条候选",
     )
     if not picked and readme_dropped:
-        gaps.insert(
-            3,
-            f"已检查候选的 README 均缺失（剔除 {readme_dropped} 个），本次入榜 0 条",
-        )
+        gaps.insert(3, "所有候选均无 README，本次入榜 0 条")
     gaps.append("刷星未做自动判定（不引入 star 异常增长过滤）")
     gaps.append(
         f"star_history 调用 {history_calls} 次（上限 {MAX_HISTORY_CALLS}），失败 {history_failed} 次"

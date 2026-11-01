@@ -39,8 +39,8 @@ allowed-tools: Read(AGENTS.md), Read(.scratch/knowledge-daily/spec.md), Read(wor
 
 - `date` 为委派日期。
 - `github`：形状见 `schemas/analyze.schema.json`；条数与 collect 条目一致，沿用 collect 的分层顺序（见 spec「实现决策」中「排序与选取」条），`topics` 原样透传。
-- `repeat`：仅为重复窗口外再次出现的项目写 `{"last_seen": "YYYY-MM-DD"}`，只含 `last_seen`。
-- `stats`：`{ github_count, dropped_recent_duplicates }`，`github_count` 等于 `github` 条数，`dropped_recent_duplicates` 沿用 collect.json。
+- `repeat`：仅为重复窗口外再次出现的项目写 `repeat.last_seen`，值等于最近一次发布日期；形状见 `schemas/analyze.schema.json`。
+- `stats`：`github_count` 等于 `github` 条数，`dropped_recent_duplicates` 沿用 collect.json；形状见 `schemas/analyze.schema.json`。
 - `gaps` 如实记录素材抓取失败等异常。
 - 不含 `rank`、`overview`、`dropped_by_organize`。
 

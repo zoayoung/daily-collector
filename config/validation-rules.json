@@ -4,5 +4,6 @@
   "report_min_items": 10,
   "report_max_items": 15,
   "core_max_cjk": 100,
-  "new_burst_window_days": 7
+  "new_burst_window_days": 7,
+  "new_burst_min_stars": 100
 }

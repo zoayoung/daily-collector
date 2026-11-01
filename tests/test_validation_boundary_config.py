@@ -13,6 +13,7 @@ import urllib.parse
 from tests.support import (
     NEW_7D_CHANNEL,
     CliCase,
+    collect_item,
     empty_search_pages,
     search_item,
     search_request,
@@ -21,6 +22,7 @@ from tests.support import (
 DAY = "2026-10-21"
 GAIN = "2026-10-20"
 WINDOW = 3
+MIN_STARS = 400
 
 
 def query_of(path: str) -> dict[str, list[str]]:
@@ -33,26 +35,6 @@ def channel_requests(requests: list[str], channel: str) -> list[str]:
         for path in requests
         if path.startswith("/search/repositories") and search_request(path)[0] == channel
     ]
-
-
-def collect_item(
-    name: str,
-    created_at: str,
-    stars_total: int,
-    stars_today: int,
-) -> dict:
-    return {
-        "full_name": name,
-        "url": f"https://github.com/{name}",
-        "description": "示例项目",
-        "language": "Go",
-        "stars_total": stars_total,
-        "stars_today": stars_today,
-        "stars_today_source": "star_history",
-        "forks": 10,
-        "created_at": created_at,
-        "pushed_at": DAY,
-    }
 
 
 class WindowConfigTest(CliCase):
@@ -119,6 +101,65 @@ class WindowConfigTest(CliCase):
             [entry["full_name"] for entry in data["github"]],
             ["new/true", "old/big", "mid/false"],
         )
+
+
+class MinStarsConfigTest(CliCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.use_config(new_burst_min_stars=MIN_STARS)
+
+    def validate_items(self, items: list[dict]) -> object:
+        document = {
+            "date": DAY,
+            "collected_at": f"{DAY} 08:00",
+            "github": items,
+            "gaps": [],
+        }
+        path = self.work / DAY / "collect.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+        return self.validate("--file", str(path))
+
+    def test_third_channel_query_follows_the_configured_threshold(self) -> None:
+        pages = empty_search_pages()
+        pages[(NEW_7D_CHANNEL, 1)] = [
+            search_item("fresh/burst", 150, created_at="2026-10-18T00:00:00Z")
+        ]
+
+        _, requests = self.collect(pages, gain_date=GAIN)
+
+        paths = channel_requests(requests, NEW_7D_CHANNEL)
+        self.assertIn(f"stars:>={MIN_STARS}", query_of(paths[0])["q"][0])
+
+    def test_layering_uses_the_configured_threshold(self) -> None:
+        baseline = self.work / "2026-10-20" / "collect.json"
+        baseline.parent.mkdir(parents=True, exist_ok=True)
+        baseline.write_text(
+            json.dumps({"github": [{"full_name": "old/high", "stars_total": 5000}]}),
+            encoding="utf-8",
+        )
+        pages = empty_search_pages()
+        pages[("500..2000", 1)] = [search_item("old/high", 5900)]
+        pages[(NEW_7D_CHANNEL, 1)] = [
+            search_item("fresh/low", 150, created_at="2026-10-18T00:00:00Z")
+        ]
+
+        data, _ = self.collect(pages)
+
+        self.assertEqual(
+            [entry["full_name"] for entry in data["github"]],
+            ["old/high", "fresh/low"],
+        )
+
+    def test_validation_layering_uses_the_configured_threshold(self) -> None:
+        result = self.validate_items(
+            [
+                collect_item("old/repo", "2020-01-01", 5000, 10),
+                collect_item("fresh/low", "2026-10-19", 150, 5),
+            ]
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

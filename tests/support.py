@@ -59,6 +59,27 @@ def search_item(
     return item
 
 
+def collect_item(
+    name: str,
+    created_at: str,
+    stars_total: int,
+    stars_today: int,
+) -> dict:
+    """构造一条合法的 collect.json 条目。"""
+    return {
+        "full_name": name,
+        "url": f"https://github.com/{name}",
+        "description": "示例项目",
+        "language": "Go",
+        "stars_total": stars_total,
+        "stars_today": stars_today,
+        "stars_today_source": "star_history",
+        "forks": 10,
+        "created_at": created_at,
+        "pushed_at": DEFAULT_DAY,
+    }
+
+
 def empty_search_pages() -> dict[tuple[str, int], object]:
     """让所有 star 区间的第一页回放空列表，只有显式覆盖的通道才有候选。"""
     return {(star_range, 1): [] for star_range in EXPECTED_STAR_RANGES}
@@ -97,14 +118,14 @@ def fixture_bytes(name: str) -> bytes:
 
 
 def search_request(path: str) -> tuple[str, int]:
-    """从搜索请求路径解析通道与页码；按 star 阈值区分新仓库与近 7 天新建通道。"""
+    """从搜索请求路径解析通道与页码；新仓库通道固定 50 星门槛，其余 created 查询视为近 7 天新建。"""
     query = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
     text = (query.get("q") or [""])[0]
     page = int((query.get("page") or ["1"])[0])
     if "created:" in text:
-        if "stars:>=100" in text:
-            return NEW_7D_CHANNEL, page
-        return NEW_REPOS_CHANNEL, page
+        if text.endswith("stars:>=50"):
+            return NEW_REPOS_CHANNEL, page
+        return NEW_7D_CHANNEL, page
     match = re.search(r"stars:(\S+)", text)
     star_range = match.group(1) if match else ""
     return star_range, page
