@@ -1,6 +1,6 @@
 # 规格：新仓库通道与热度预算（采集扩容）
 
-**Status:** ready-for-agent
+**Status:** delivered（口径已并入 .scratch/knowledge-daily/spec.md，本文件仅作审计凭据）
 **日期:** 2026-10-30
 **影响阶段:** 采集（`scripts/collect.py`）及其契约、测试、工作流 spec
 

@@ -1,6 +1,6 @@
 # 规格：采集口径对齐与新爆款优先
 
-**Status:** ready-for-agent
+**Status:** delivered（口径已并入 .scratch/knowledge-daily/spec.md，本文件仅作审计凭据）
 **日期:** 2026-10-31
 **影响阶段:** 采集（候选集、入榜集、分层排序）、契约、校验、整理排序、渲染、文档与测试
 

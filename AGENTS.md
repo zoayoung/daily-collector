@@ -15,9 +15,9 @@
 
 ## 自动运行
 
-GitHub Actions 每个自然日清晨 06:00（UTC+8）起无头运行同一套流程，发布当天日报、数据归属前一日，工作流见 `.github/workflows/daily-knowledge.yml`；目标 08:00 前完成（GitHub 定时为 best-effort，两班非整点抢发）；触发、参数、幂等、失败与冒烟口径见 spec 的「自动运行」「CI 参数/凭证/幂等/失败/并发/冒烟」节。
+GitHub Actions 每个自然日清晨 06:00（UTC+8）起无头运行同一套流程，发布当天日报、数据归属前一日，工作流见 `.github/workflows/daily-knowledge.yml`；目标 08:00 前完成（GitHub 定时为 best-effort，两班非整点抢发）；触发、参数、幂等、失败与冒烟口径见 spec「实现决策」中「自动运行」「CI 参数」「CI 凭证」「CI 幂等」「CI 失败」「CI 并发」「CI 冒烟（交付门槛）」条。
 
-- 手动触发支持 `force` 覆盖；发布日日报已存在时的跳过与覆盖口径见 spec 的「CI 幂等」。
+- 手动触发支持 `force` 覆盖；发布日日报已存在时的跳过与覆盖口径见 spec「实现决策」中「CI 幂等」条。
 - 成功后只提交 `daily-knowledge/` 与发布日 `work/YYYY-MM-DD/collect.json`；其余中间产物不入库。
 - 失败不提交半成品、不自动重试，只上传 `work/<发布日>/` artifact。
 
@@ -25,7 +25,7 @@ GitHub Actions 每个自然日清晨 06:00（UTC+8）起无头运行同一套流
 
 - 默认只读：未经用户明确要求，不修改项目中的任何文件、不开始实施、不提交或推送。用户只要求改文档时，只改指定文档。
 - 采集由 Python 脚本（`scripts/collect.py`）完成；契约校验与质量评分为 Python（`scripts/validate.py`、`scripts/score.py`）；其余阶段零脚本。
-- 采集口径（三通道、新爆款分层排序与 `🆕` 标记）见 `.scratch/knowledge-daily/spec.md` 的「实现决策」中「候选池口径」「排序与选取」与「编排协议 · 渲染模板」节。
+- 采集口径（三通道、新爆款分层排序与 `🆕` 标记）见 `.scratch/knowledge-daily/spec.md` 的「实现决策」中「候选池口径」「排序与选取」条与「编排协议」中「渲染模板（主代理机械填充）」节。
 - 字段与形状以 `schemas/` 为唯一来源；评分词表在 `config/score-rules.json`，校验语义阈值在 `config/validation-rules.json`；三者都不在技能里复述。
 - 子代理只有两个：`knowledge-analyze`（分析）与 `knowledge-organize`（整理）；采集不再是子代理。
 - 技能/agent/文档的写法规范（供 `/code-review` 标准轴）见 `docs/agents/CODING_STANDARDS.md`。
