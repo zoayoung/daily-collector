@@ -4,12 +4,12 @@
 
 **Blocked by:** 09
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 技能与入口文件中的 spec 指针都能在 spec 找到对应小节，不指向不存在的小节
-- [ ] 分析技能不再列举仓库字段，字段形状只指向 schema
-- [ ] 特性规格归档且状态为 delivered，主 spec 是唯一产品口径
-- [ ] 全仓检索确认同一字段清单没有同时出现在 schema 与技能中
+- [x] 技能与入口文件中的 spec 指针都能在 spec 找到对应小节，不指向不存在的小节
+- [x] 分析技能不再列举仓库字段，字段形状只指向 schema
+- [x] 特性规格归档且状态为 delivered，主 spec 是唯一产品口径
+- [x] 全仓检索确认同一字段清单没有同时出现在 schema 与技能中
 
 **Acceptance evidence:** 逐个打开技能与入口文件里的 spec 指针，均能落到真实小节；把仓库字段清单与 schema 对照，技能侧已无重复列举。
 
